@@ -6,6 +6,9 @@
 * [`kubectl kustomize` command reference](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_kustomize/)
 * [Kubernetes container images](https://kubernetes.io/docs/concepts/containers/images/)
 * [Kubernetes liveness, readiness, and startup probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
+* [Helm introduction](https://helm.sh/docs/intro/introduction/)
+* [Helm chart template guide](https://helm.sh/docs/chart_template_guide/)
+* [Helm post-rendering](https://helm.sh/docs/topics/advanced/#post-rendering)
 
 ## Kustomize
 
@@ -131,3 +134,26 @@
     patches:
       - path: deployment-patch.yaml
     ```
+
+## Kustomize and Helm
+
+* purpose
+  * Kustomize customizes Kubernetes resources for different targets
+  * Helm packages, distributes, installs, and upgrades Kubernetes applications as charts and releases
+* source format
+  * Kustomize starts from Kubernetes resource YAML and applies transformations and patches
+  * Helm charts use Go templates and values to generate Kubernetes resource YAML
+* configuration
+  * Kustomize expresses variants with bases and overlays
+  * Helm exposes chart-defined settings through values
+* lifecycle
+  * `kubectl kustomize` renders manifests and does not track releases
+  * Helm tracks each installed chart instance as a release and supports upgrades and rollbacks
+* coexistence
+  * use Helm for packaged applications and Kustomize for repository-owned manifests
+  * example
+    * install a vendor database from a Helm chart
+    * manage the Inventory API environments with Kustomize overlays
+  * Helm can pass rendered chart manifests through a Kustomize post-renderer before installation
+    * use this when a required change is not exposed by the chart's values
+    * every install and upgrade of that release must use the same post-renderer to remain repeatable
