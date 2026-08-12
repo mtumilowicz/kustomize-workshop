@@ -36,206 +36,45 @@
   * transformations need existing resource names or image names to select their targets
   * repository conventions or external validation must ensure every required overlay value is set
 
+## Problems Kustomize addresses
 
-## Duplicated manifests
-
-* development
-  * `kubernetes/development/deployment.yaml`
-
-    ```yaml
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      replicas: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: inventory-api
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: inventory-api
-        spec:
-          containers:
-            - name: inventory-api
-              image: inventory-api:dev
-              imagePullPolicy: IfNotPresent
-              ports:
-                - name: http
-                  containerPort: 8080
-              env:
-                - name: LOG_LEVEL
-                  value: DEBUG
-              resources:
-                limits:
-                  memory: 256Mi
-    ```
-
-  * `kubernetes/development/service.yaml`
-
-    ```yaml
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      selector:
-        app.kubernetes.io/name: inventory-api
-      ports:
-        - name: http
-          port: 80
-          targetPort: http
-    ```
-
-* staging
-  * `kubernetes/staging/deployment.yaml`
-
-    ```yaml
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      replicas: 2
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: inventory-api
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: inventory-api
-        spec:
-          containers:
-            - name: inventory-api
-              image: inventory-api:rc
-              imagePullPolicy: IfNotPresent
-              ports:
-                - name: http
-                  containerPort: 8080
-              env:
-                - name: LOG_LEVEL
-                  value: INFO
-              resources:
-                limits:
-                  memory: 512Mi
-    ```
-
-  * `kubernetes/staging/service.yaml`
-
-    ```yaml
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      selector:
-        app.kubernetes.io/name: inventory-api
-      ports:
-        - name: http
-          port: 80
-          targetPort: http
-    ```
-
-* production
-  * `kubernetes/production/deployment.yaml`
-
-    ```yaml
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      replicas: 4
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: inventory-api
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: inventory-api
-        spec:
-          containers:
-            - name: inventory-api
-              image: inventory-api:1.0.0
-              imagePullPolicy: IfNotPresent
-              ports:
-                - name: http
-                  containerPort: 8080
-              env:
-                - name: LOG_LEVEL
-                  value: WARN
-              resources:
-                limits:
-                  memory: 1Gi
-    ```
-
-  * `kubernetes/production/service.yaml`
-
-    ```yaml
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: inventory-api
-      labels:
-        app.kubernetes.io/name: inventory-api
-    spec:
-      selector:
-        app.kubernetes.io/name: inventory-api
-      ports:
-        - name: http
-          port: 80
-          targetPort: http
-    ```
-
-The Deployments differ only in these settings:
-
-| Setting | Development | Staging | Production |
-|---|---:|---:|---:|
-| Replicas | 1 | 2 | 4 |
-| Image tag | `dev` | `rc` | `1.0.0` |
-| Log level | `DEBUG` | `INFO` | `WARN` |
-| Memory | `256Mi` | `512Mi` | `1Gi` |
-
-The Services are identical.
-
-## Problems
-
-* repeated changes
-  * a shared change must be copied into every environment
+* duplicated manifests
+  * shared configuration is defined once and reused
 * accidental environment drift
-  * a copy may be missed or changed differently
+  * overlays expose intentional differences
 * difficult reviews
-  * reviewers must separate intended differences from duplicated YAML
-* more duplication for every new environment
-  * each environment adds another complete copy
+  * reviews focus on small environment-specific changes
+* environment growth
+  * new environments reuse existing resources
+* example
+  * requirement: add the same readiness probe to every environment
+  * without Kustomize
+    * repeat this block in three Deployment files
 
-## Kustomize structure
+      ```yaml
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: http
+      ```
 
-Kustomize replaces the copies with a shared base and environment overlays:
+  * with Kustomize
+    * add the block once to `base/deployment.yaml`
+    * development, staging, and production inherit it
 
-```text
-kubernetes/
-├── base/
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── kustomization.yaml
-└── overlays/
-    ├── development/
-    ├── staging/
-    └── production/
-```
-
+## example
+* structure
+    ```text
+    kubernetes/
+    ├── base/
+    │   ├── deployment.yaml
+    │   ├── service.yaml
+    │   └── kustomization.yaml
+    └── overlays/
+        ├── development/
+        ├── staging/
+        └── production/
+    ```
 * resource
   * a Kubernetes manifest or Kustomize directory listed under `resources`
 * base
@@ -244,18 +83,6 @@ kubernetes/
   * composition-only in this workshop; render an overlay, not the base directly
 * overlay
   * a Kustomize directory that references a base and describes one environment
-* `images`
-  * changes a matching container image name or tag
-  * `name` selects the image value in the base; `newTag` supplies the environment tag
-  * every overlay in this workshop sets `newTag`
-* `replicas`
-  * changes the replica count of a named workload
-* `labels`
-  * adds metadata used to identify and group resources
-  * `includeTemplates: true` also labels Pods created by the Deployment
-* `namespace`
-  * assigns namespace-scoped resources to a namespace
-  * does not create the Namespace object
 * patch
   * changes fields that do not have a dedicated Kustomize transformer
   * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
