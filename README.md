@@ -156,4 +156,15 @@
     * manage the Inventory API environments with Kustomize overlays
   * Helm can pass rendered chart manifests through a Kustomize post-renderer before installation
     * use this when a required change is not exposed by the chart's values
+    * example
+      * a vendor chart exposes image and replica values but not the required company label
+      * a Kustomize post-renderer adds the label without forking the chart
+
+        ```yaml
+        metadata:
+          labels:
+            company.example/cost-center: inventory
+        ```
+
+      * the vendor chart can still be upgraded without maintaining a custom fork
     * every install and upgrade of that release must use the same post-renderer to remain repeatable
