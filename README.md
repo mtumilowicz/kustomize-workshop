@@ -154,97 +154,8 @@
 * lifecycle
   * `kubectl kustomize` renders manifests and does not track releases
   * Helm tracks each installed chart instance as a release and supports upgrades and rollbacks
-* coexistence
-  * use Helm for packaged applications and Kustomize for repository-owned manifests
-  * example
-    * install a vendor database from a Helm chart
-    * manage the Inventory API environments with Kustomize overlays
-  * Helm can pass rendered chart manifests through a Kustomize post-renderer before installation
-    * use this when a required change is not exposed by the chart's values
-    * example
-      * a vendor chart exposes image and replica values but not the required company label
-      * a Kustomize post-renderer adds the label without forking the chart
-
-        ```yaml
-        metadata:
-          labels:
-            company.example/cost-center: inventory
-        ```
-
-      * the vendor chart can still be upgraded without maintaining a custom fork
-    * every install and upgrade of that release must use the same post-renderer to remain repeatable
-* internal services
+* internal services with Helm
   * packaging company-owned services as Helm charts remains a supported approach
-  * Helm is useful when the deployment is a product consumed by multiple teams or clusters
-  * example chart
-
-    ```text
-    inventory-api/
-    ├── Chart.yaml
-    ├── values.yaml
-    └── templates/
-        ├── deployment.yaml
-        └── service.yaml
-    ```
-
-  * the chart template defines where consumers may supply configuration
-
-    ```yaml
-    # templates/deployment.yaml
-    spec:
-      replicas: {{ .Values.replicaCount }}
-      template:
-        spec:
-          containers:
-            - name: inventory-api
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-    ```
-
-  * an environment supplies values through a separate file
-
-    ```yaml
-    # values-production.yaml
-    replicaCount: 4
-
-    image:
-      repository: inventory-api
-      tag: 1.0.0
-    ```
-
-  * Helm installs or upgrades the release with those values
-
-    ```bash
-    helm upgrade --install inventory-api ./inventory-api \
-      --namespace inventory-production \
-      --values values-production.yaml
-    ```
-
-  * benefits
-    * versioned and distributable deployment package
-    * documented configuration interface through chart values
-    * release history, upgrades, and rollbacks
-    * reusable deployment behavior across teams and clusters
-    * optional resources and chart dependencies
-  * costs
-    * templates must be written, reviewed, and tested
-    * supported values must be designed and documented
-    * chart versions and application versions must be managed
-    * a new option may require changes to both the template and its values
-    * excessive options can turn `values.yaml` into a complex configuration API
-* choosing Helm
-  * use it when several consumers need a stable deployment interface
-  * use it when the application needs optional resources, dependencies, or conditional configuration
-  * use it when Helm should own release history, upgrades, and rollbacks
-* choosing Kustomize
-  * use it when one team controls the manifests and deployment pipeline
-  * use it when environments differ through small Kubernetes-specific changes
-  * use it when concrete Kubernetes YAML is preferred over templates
-  * use it when another system owns deployment history and rollback
-* using both for an internal service
-  * Helm can provide packaging and release management while Kustomize applies organization-specific changes
-  * expected configuration in a company-owned chart should normally be exposed through chart values
-  * use post-rendering for organization-wide policy or changes to a chart the company does not control
-* detailed internal-service example
   * deployment as a product
     * does not mean that the application is sold externally
     * means that deployment behavior has a supported interface instead of requiring consumers to edit templates
@@ -321,6 +232,23 @@
 
     * the chart README can provide longer usage guidance
     * `values.schema.json` can reject missing values, invalid types, or unsupported values during linting and rendering
+  * reusable deployment behavior
+    * a chart can standardize labels, security contexts, readiness probes, ServiceAccount creation, resource configuration, rollout strategy, and monitoring integration
+    * environment files supply only the supported differences
+
+      ```yaml
+      image:
+        repository: registry.example.com/inventory-api
+        tag: 1.4.0
+
+      replicas: 4
+
+      resources:
+        limits:
+          memory: 1Gi
+      ```
+
+    * development, staging, production, and regional clusters render the same tested template behavior from those values
   * versioned package
     * `version` identifies the chart package and its deployment behavior
     * `appVersion` describes the application version represented by the chart and is independent of the chart version
@@ -347,23 +275,6 @@
       ```
 
     * a packaged chart is useful when CI, regional clusters, or other repositories must consume the same immutable deployment contract without checking out the chart source
-  * reusable deployment behavior
-    * a chart can standardize labels, security contexts, readiness probes, ServiceAccount creation, resource configuration, rollout strategy, and monitoring integration
-    * environment files supply only the supported differences
-
-      ```yaml
-      image:
-        repository: registry.example.com/inventory-api
-        tag: 1.4.0
-
-      replicas: 4
-
-      resources:
-        limits:
-          memory: 1Gi
-      ```
-
-    * development, staging, production, and regional clusters render the same tested template behavior from those values
   * optional resource example
     * `ServiceMonitor` is a custom resource supplied by Prometheus Operator
     * a cluster without the `ServiceMonitor` CRD cannot use that resource
@@ -453,7 +364,7 @@
       ```
 
     * this flexibility may be justified for a widely reused chart but is unnecessary for a small deployment with a few known variants
-* detailed selection criteria
+* choosing Helm or Kustomize
   * choose Helm when
     * deployment behavior needs a stable configuration interface
       * example: the same release process deploys the Inventory API across development, staging, production, and regional clusters
@@ -477,7 +388,10 @@
       * example: Flux builds a Kustomize overlay from Git, applies it, and corrects drift
       * Git records the desired-state history; reverting a commit restores the previous manifests for Flux to reconcile
     * concrete YAML is preferred when direct Kubernetes schema-aware editing and review are more valuable than template reuse
-* detailed coexistence example
+* using Helm and Kustomize together
+  * separate workloads
+    * install a vendor database from a Helm chart
+    * manage the Inventory API environments with Kustomize overlays
   * company-owned chart
     * normal application configuration should be exposed through values
     * example: if memory limits are supported, consumers configure them in an environment values file
@@ -490,6 +404,7 @@
 
     * the owned chart template should read that value; a post-renderer should not compensate for an intentionally supported option
   * organization-wide policy across vendor charts
+    * Helm can pass rendered chart manifests through a Kustomize post-renderer before installation
     * the organization installs several charts it does not control
     * every workload must contain the mandatory `company.example/cost-center` label
     * the vendor charts expose different label settings, or no suitable setting
