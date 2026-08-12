@@ -83,41 +83,42 @@
   * composition-only in this workshop; render an overlay, not the base directly
 * overlay
   * a Kustomize directory that references a base and describes one environment
+* transformer
+  * applies a standard change across resources
+  * example
+
+    ```yaml
+    # kubernetes/overlays/development/kustomization.yaml
+    namespace: inventory-development # assigns the namespace
+    ```
+
 * patch
-  * changes fields that do not have a dedicated Kustomize transformer
+  * applies targeted changes to a resource
   * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
   * a practical convention is one overlay patch per target resource
     * focused means a clear target and limited scope, not one file per changed field
+  * example
 
-## Workshop plan
+    ```yaml
+    # kubernetes/overlays/development/deployment-patch.yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: inventory-api
+    spec:
+      template:
+        spec:
+          containers:
+            - name: inventory-api
+              imagePullPolicy: Always
+              env: # customizes the Deployment
+                - name: LOG_LEVEL
+                  value: DEBUG
+    ```
 
-1. Inspect the duplicated manifests.
-   * Confirm that all Services are identical.
-   * Identify the four intentional Deployment differences.
-2. Extract the common resources.
-   * Move one Deployment and one Service into `kubernetes/base`.
-   * List both files as resources in the base `kustomization.yaml`.
-3. Create the development overlay.
-   * Reference the base.
-   * Set the namespace, environment label, image tag, and replica count.
-   * Patch only the development log level.
-4. Create the staging overlay.
-   * Set the staging namespace, label, image tag, and replica count.
-   * Add the staging memory limit to its Deployment patch.
-5. Create the production overlay.
-   * Set the production namespace, label, image tag, and replica count.
-   * Patch the production log level and memory limit.
-6. Render every overlay.
-   * Compare the generated resources with the required values.
-   * Confirm that the shared Service is produced for every environment.
-7. Handle a shared operational change.
-   * Requirement: do not send Service traffic to an Inventory API Pod before `/ready` succeeds.
-   * Add one readiness probe to the base Deployment instead of editing three copies.
-   * Render every overlay and confirm that all inherit the probe.
-8. Handle an environment exception.
-   * Requirement: staging needs 15 seconds before its first readiness check.
-   * Add `initialDelaySeconds` to the existing staging Deployment patch.
-   * Confirm that development and production retain the shared five-second value.
-9. Handle a mutable development image.
-   * Requirement: the `dev` tag may point to a newly built image.
-   * Add `imagePullPolicy: Always` to the existing development Deployment patch.
+  * `kubernetes/overlays/development/kustomization.yaml` registers the patch
+
+    ```yaml
+    patches:
+      - path: deployment-patch.yaml
+    ```
