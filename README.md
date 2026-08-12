@@ -1,21 +1,11 @@
-# Kustomize workshop
+# kustomize-workshop
 
-```text
-kubernetes/
-├── development/
-│   ├── deployment.yaml
-│   └── service.yaml
-├── staging/
-│   ├── deployment.yaml
-│   └── service.yaml
-└── production/
-    ├── deployment.yaml
-    └── service.yaml
-```
+## References
 
-This structure deploys the same Inventory API to three environments. Each directory contains a complete copy of its Kubernetes manifests.
-
-The image name is illustrative. This workshop renders YAML and does not deploy it.
+* [Declarative management of Kubernetes objects using Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
+* [`kubectl kustomize` command reference](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_kustomize/)
+* [Kubernetes container images](https://kubernetes.io/docs/concepts/containers/images/)
+* [Kubernetes liveness, readiness, and startup probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
 
 ## Duplicated manifests
 
@@ -199,6 +189,35 @@ The Services are identical.
   * reviewers must separate intended differences from duplicated YAML
 * more duplication for every new environment
   * each environment adds another complete copy
+
+## Kustomize
+
+* purpose
+  * customizes Kubernetes resources without introducing a template language
+  * keeps common configuration in one place and expresses intentional differences separately
+  * is built into `kubectl`; a separate Kustomize installation is not required for this workshop
+* input
+  * starts from regular Kubernetes YAML rather than manifests containing placeholders
+  * reads build instructions from a `kustomization.yaml` file
+  * composes resources from files and other Kustomize directories
+* build process
+  * loads the resources listed by the selected `kustomization.yaml`
+  * recursively loads referenced bases
+  * applies built-in transformations such as namespaces, labels, images, and replicas
+  * applies patches for targeted resource changes
+  * emits complete Kubernetes manifests
+* source and output
+  * does not modify the source manifests while rendering
+  * does not contact a cluster or deploy resources when using `kubectl kustomize`
+  * produces YAML that can be reviewed, compared, or passed to a separate deployment step
+* benefits
+  * shared changes are made once in the base
+  * overlays contain only environment-specific intent
+  * rendered output remains standard Kubernetes YAML
+* limits
+  * does not provide empty or required-value placeholders
+  * transformations need existing resource names or image names to select their targets
+  * repository conventions or external validation must ensure every required overlay value is set
 
 ## Kustomize structure
 
