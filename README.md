@@ -203,7 +203,8 @@
       ```
 
   * configuration interface
-    * a value affects the rendered result only when a template reads it
+    * chart values are not automatically mapped to Kubernetes fields
+    * a template must explicitly use each supported value
     * the Deployment template reads the supported replica and image values
 
       ```yaml
@@ -339,7 +340,9 @@
       * documents and validates its structure
       * renders it in `templates/deployment.yaml`
       * tests the rendered Deployment
-      * preserves compatibility for existing consumers
+      * decides whether existing environment value files still render correctly
+      * if the new value is optional and has a default, existing files require no change
+      * if the values interface changes incompatibly, release a new major chart version
     * excessive configurability can turn `values.yaml` into a large deployment API
 
       ```yaml
@@ -365,7 +368,12 @@
 * choosing Helm or Kustomize
   * choose Helm when
     * deployment behavior needs a stable configuration interface
-      * example: the same release process deploys the Inventory API across development, staging, production, and regional clusters
+      * example
+        * the application team publishes the Inventory API chart
+        * customer operations teams configure image registry, database endpoint, resources, and certificates through documented values
+        * consumers upgrade chart versions without editing or understanding the chart templates
+      * Kustomize could represent the same deployments, but consumers would customize Kubernetes resources and patches
+      * Helm is valuable here because the chart exposes a deliberate consumer-facing configuration contract
     * CI or other repositories need a versioned deployment artifact
       * example: production pins chart `0.8.1` while staging validates the deployment changes in `0.9.0`
     * optional resources belong to the supported interface
