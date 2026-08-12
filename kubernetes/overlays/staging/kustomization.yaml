@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: inventory-staging
+resources:
+  - ../../base
+images:
+  - name: inventory-api
+    newTag: rc
+replicas:
+  - name: inventory-api
+    count: 2
+labels:
+  - pairs:
+      app.kubernetes.io/environment: staging
+    includeTemplates: true
+patches:
+  - path: deployment-patch.yaml

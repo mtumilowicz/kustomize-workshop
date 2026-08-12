@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: inventory-api
+          readinessProbe:
+            initialDelaySeconds: 15
+          resources:
+            limits:
+              memory: 512Mi
