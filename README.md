@@ -8,7 +8,12 @@
 * [Kubernetes liveness, readiness, and startup probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
 * [Helm introduction](https://helm.sh/docs/intro/introduction/)
 * [Helm chart template guide](https://helm.sh/docs/chart_template_guide/)
+* [Helm chart structure](https://helm.sh/docs/topics/charts/)
+* [Helm values best practices](https://helm.sh/docs/chart_best_practices/values/)
+* [Helm chart dependencies](https://helm.sh/docs/chart_best_practices/dependencies/)
 * [Helm post-rendering](https://helm.sh/docs/topics/advanced/#post-rendering)
+* [Flux Kustomization](https://fluxcd.io/flux/components/kustomize/kustomizations/)
+* [Flux Helm Controller](https://fluxcd.io/flux/components/helm/)
 
 ## Kustomize
 
@@ -239,3 +244,262 @@
   * Helm can provide packaging and release management while Kustomize applies organization-specific changes
   * expected configuration in a company-owned chart should normally be exposed through chart values
   * use post-rendering for organization-wide policy or changes to a chart the company does not control
+* detailed internal-service example
+  * deployment as a product
+    * does not mean that the application is sold externally
+    * means that deployment behavior has a supported interface instead of requiring consumers to edit templates
+    * example
+      * one operations team deploys the Inventory API to development, staging, production, and regional production clusters
+      * every target uses the same chart interface
+      * each target changes only supported values such as replicas, image tag, resources, and external service endpoints
+  * repository structure
+    * Helm does not prescribe where environment value files must live
+    * one clear repository convention is
+
+      ```text
+      deploy/
+      ├── chart/
+      │   └── inventory-api/
+      │       ├── Chart.yaml
+      │       ├── values.yaml
+      │       ├── values.schema.json
+      │       └── templates/
+      │           ├── deployment.yaml
+      │           └── service.yaml
+      └── environments/
+          ├── development.yaml
+          ├── staging.yaml
+          └── production.yaml
+      ```
+
+    * `chart/inventory-api/values.yaml` contains documented defaults
+    * `environments/*.yaml` contains environment overrides
+    * `values.schema.json` validates supported value types and constraints
+    * `templates/` converts the values into Kubernetes resources
+    * render production without installing it
+
+      ```bash
+      helm template inventory-api deploy/chart/inventory-api \
+        --values deploy/environments/production.yaml
+      ```
+
+    * install or upgrade production
+
+      ```bash
+      helm upgrade --install inventory-api deploy/chart/inventory-api \
+        --namespace inventory-production \
+        --values deploy/environments/production.yaml
+      ```
+
+  * configuration interface
+    * a value affects the rendered result only when a template reads it
+    * the Deployment template reads the supported replica and image values
+
+      ```yaml
+      # deploy/chart/inventory-api/templates/deployment.yaml
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: inventory-api
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      ```
+
+    * `values.yaml` documents every supported property and supplies defaults
+
+      ```yaml
+      # replicaCount controls the number of Inventory API Pods.
+      replicaCount: 1
+
+      image:
+        # image.repository identifies the Inventory API image.
+        repository: inventory-api
+        # image.tag selects the application version.
+        tag: dev
+      ```
+
+    * the chart README can provide longer usage guidance
+    * `values.schema.json` can reject missing values, invalid types, or unsupported values during linting and rendering
+  * versioned package
+    * `version` identifies the chart package and its deployment behavior
+    * `appVersion` describes the application version represented by the chart and is independent of the chart version
+
+      ```yaml
+      # Chart.yaml
+      name: inventory-api
+      version: 0.8.1
+      appVersion: "1.4.0"
+      ```
+
+    * example reason to pin chart `0.8.1`
+      * chart `0.9.0` changes the security context and Deployment rollout strategy
+      * staging validates that new deployment behavior first
+      * production remains on `0.8.1` until the change is reviewed and promoted
+      * pinning prevents production from receiving an unreviewed chart change
+    * the application image can be upgraded independently when the chart exposes the image tag as a value
+
+      ```bash
+      helm upgrade --install inventory-api \
+        oci://registry.example.com/charts/inventory-api \
+        --version 0.8.1 \
+        --values deploy/environments/production.yaml
+      ```
+
+    * a packaged chart is useful when CI, regional clusters, or other repositories must consume the same immutable deployment contract without checking out the chart source
+  * reusable deployment behavior
+    * a chart can standardize labels, security contexts, readiness probes, ServiceAccount creation, resource configuration, rollout strategy, and monitoring integration
+    * environment files supply only the supported differences
+
+      ```yaml
+      image:
+        repository: registry.example.com/inventory-api
+        tag: 1.4.0
+
+      replicas: 4
+
+      resources:
+        limits:
+          memory: 1Gi
+      ```
+
+    * development, staging, production, and regional clusters render the same tested template behavior from those values
+  * optional resource example
+    * `ServiceMonitor` is a custom resource supplied by Prometheus Operator
+    * a cluster without the `ServiceMonitor` CRD cannot use that resource
+    * the chart can render it only for clusters where Prometheus Operator is installed
+
+      ```yaml
+      # deploy/environments/production.yaml
+      monitoring:
+        serviceMonitor:
+          enabled: true
+      ```
+
+      ```yaml
+      # templates/service-monitor.yaml
+      {{- if .Values.monitoring.serviceMonitor.enabled }}
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      # ...
+      {{- end }}
+      ```
+
+  * dependency example
+    * the Inventory API uses Redis as a cache
+    * a subchart is a Helm chart declared as a dependency of another chart
+    * the Inventory API chart can declare a Redis chart as its dependency
+
+      ```yaml
+      # Chart.yaml
+      dependencies:
+        - name: redis
+          version: 20.x.x
+          repository: https://charts.example.com
+          condition: redis.enabled
+      ```
+
+    * development enables the Redis subchart to install a self-contained Redis instance with the application
+
+      ```yaml
+      # deploy/environments/development.yaml
+      redis:
+        enabled: true
+      ```
+
+    * production disables the bundled Redis dependency and points the Inventory API at a separately managed Redis service
+
+      ```yaml
+      # deploy/environments/production.yaml
+      redis:
+        enabled: false
+
+      externalRedis:
+        host: inventory-cache.example.internal
+      ```
+
+  * chart maintenance cost
+    * supported values are documented in `values.yaml`, the chart README, and optionally `values.schema.json`
+    * chart templates and their rendered output must be reviewed and tested
+    * chart and application versions represent different changes
+      * increment the chart version when templates, defaults, dependencies, or the values interface changes
+      * change the application version when the Inventory API release changes
+    * example new option
+      * production needs configurable topology spread constraints
+      * the chart maintainer adds the value to `values.yaml`
+      * documents and validates its structure
+      * renders it in `templates/deployment.yaml`
+      * tests the rendered Deployment
+      * preserves compatibility for existing consumers
+    * excessive configurability can turn `values.yaml` into a large deployment API
+
+      ```yaml
+      deployment:
+        strategy: {}
+        annotations: {}
+
+      pod:
+        securityContext: {}
+        affinity: {}
+        tolerations: []
+        topologySpreadConstraints: []
+        extraVolumes: []
+        extraContainers: []
+        extraEnv: []
+
+      monitoring:
+        serviceMonitor:
+          enabled: false
+      ```
+
+    * this flexibility may be justified for a widely reused chart but is unnecessary for a small deployment with a few known variants
+* detailed selection criteria
+  * choose Helm when
+    * deployment behavior needs a stable configuration interface
+      * example: the same release process deploys the Inventory API across development, staging, production, and regional clusters
+    * CI or other repositories need a versioned deployment artifact
+      * example: production pins chart `0.8.1` while staging validates the deployment changes in `0.9.0`
+    * optional resources belong to the supported interface
+      * example: render `ServiceMonitor` only in clusters running Prometheus Operator
+    * dependencies belong to the installation
+      * example: bundle Redis for development but use managed Redis in production
+    * Helm release operations are required
+      * example: inspect release history or roll back a failed upgrade
+    * one team can still benefit from Helm when it needs packaging, dependencies, hooks, tests, release history, or rollback
+  * choose Kustomize when
+    * environment changes are small and Kubernetes-specific
+      * example: image tag, replicas, memory, namespace, and readiness timing
+    * reviewers should see the exact Kubernetes fields being changed
+      * a patch shows the concrete Deployment structure without tracing `.Values` through templates
+    * a general consumer-facing configuration interface is not required
+    * templates, loops, and conditional resources would add unnecessary indirection
+    * the delivery system already owns reconciliation and configuration history
+      * example: Flux builds a Kustomize overlay from Git, applies it, and corrects drift
+      * Git records the desired-state history; reverting a commit restores the previous manifests for Flux to reconcile
+    * concrete YAML is preferred when direct Kubernetes schema-aware editing and review are more valuable than template reuse
+* detailed coexistence example
+  * company-owned chart
+    * normal application configuration should be exposed through values
+    * example: if memory limits are supported, consumers configure them in an environment values file
+
+      ```yaml
+      resources:
+        limits:
+          memory: 1Gi
+      ```
+
+    * the owned chart template should read that value; a post-renderer should not compensate for an intentionally supported option
+  * organization-wide policy across vendor charts
+    * the organization installs several charts it does not control
+    * every workload must contain the mandatory `company.example/cost-center` label
+    * the vendor charts expose different label settings, or no suitable setting
+    * one centrally maintained Kustomize post-renderer adds the label consistently to the rendered resources
+
+      ```yaml
+      metadata:
+        labels:
+          company.example/cost-center: inventory
+      ```
+
+    * this keeps organization policy outside unrelated vendor chart templates and avoids maintaining chart forks
+    * every install and upgrade must use the same post-renderer so Helm operates on repeatable rendered output
