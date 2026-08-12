@@ -27,6 +27,15 @@
   * does not modify the source manifests while rendering
   * does not contact a cluster or deploy resources when using `kubectl kustomize`
   * produces YAML that can be reviewed, compared, or passed to a separate deployment step
+* rendering
+  * point `kubectl kustomize` to a directory containing `kustomization.yaml`
+
+    ```bash
+    kubectl kustomize kubernetes/overlays/development
+    ```
+
+  * prints the final Kubernetes YAML to standard output
+  * does not deploy resources or require a cluster
 * benefits
   * shared changes are made once in the base
   * overlays contain only environment-specific intent
