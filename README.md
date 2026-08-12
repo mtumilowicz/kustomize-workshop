@@ -160,9 +160,9 @@
     * does not mean that the application is sold externally
     * means that deployment behavior has a supported interface instead of requiring consumers to edit templates
     * example
-      * one operations team deploys the Inventory API to development, staging, production, and regional production clusters
-      * every target uses the same chart interface
-      * each target changes only supported values such as replicas, image tag, resources, and external service endpoints
+      * the application team deploys the Inventory API to the company's cloud environments
+      * customer operations teams deploy the same Inventory API in their on-premises Kubernetes clusters
+      * the chart provides both groups with one supported deployment package and configuration interface
   * repository structure
     * Helm does not prescribe where environment value files must live
     * one clear repository convention is
@@ -230,7 +230,6 @@
         tag: dev
       ```
 
-    * the chart README can provide longer usage guidance
     * `values.schema.json` can reject missing values, invalid types, or unsupported values during linting and rendering
   * reusable deployment behavior
     * a chart can standardize labels, security contexts, readiness probes, ServiceAccount creation, resource configuration, rollout strategy, and monitoring integration
@@ -248,7 +247,6 @@
           memory: 1Gi
       ```
 
-    * development, staging, production, and regional clusters render the same tested template behavior from those values
   * versioned package
     * `version` identifies the chart package and its deployment behavior
     * `appVersion` describes the application version represented by the chart and is independent of the chart version
@@ -392,17 +390,6 @@
   * separate workloads
     * install a vendor database from a Helm chart
     * manage the Inventory API environments with Kustomize overlays
-  * company-owned chart
-    * normal application configuration should be exposed through values
-    * example: if memory limits are supported, consumers configure them in an environment values file
-
-      ```yaml
-      resources:
-        limits:
-          memory: 1Gi
-      ```
-
-    * the owned chart template should read that value; a post-renderer should not compensate for an intentionally supported option
   * organization-wide policy across vendor charts
     * Helm can pass rendered chart manifests through a Kustomize post-renderer before installation
     * the organization installs several charts it does not control
