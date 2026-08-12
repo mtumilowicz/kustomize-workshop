@@ -168,3 +168,74 @@
 
       * the vendor chart can still be upgraded without maintaining a custom fork
     * every install and upgrade of that release must use the same post-renderer to remain repeatable
+* internal services
+  * packaging company-owned services as Helm charts remains a supported approach
+  * Helm is useful when the deployment is a product consumed by multiple teams or clusters
+  * example chart
+
+    ```text
+    inventory-api/
+    ├── Chart.yaml
+    ├── values.yaml
+    └── templates/
+        ├── deployment.yaml
+        └── service.yaml
+    ```
+
+  * the chart template defines where consumers may supply configuration
+
+    ```yaml
+    # templates/deployment.yaml
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: inventory-api
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    ```
+
+  * an environment supplies values through a separate file
+
+    ```yaml
+    # values-production.yaml
+    replicaCount: 4
+
+    image:
+      repository: inventory-api
+      tag: 1.0.0
+    ```
+
+  * Helm installs or upgrades the release with those values
+
+    ```bash
+    helm upgrade --install inventory-api ./inventory-api \
+      --namespace inventory-production \
+      --values values-production.yaml
+    ```
+
+  * benefits
+    * versioned and distributable deployment package
+    * documented configuration interface through chart values
+    * release history, upgrades, and rollbacks
+    * reusable deployment behavior across teams and clusters
+    * optional resources and chart dependencies
+  * costs
+    * templates must be written, reviewed, and tested
+    * supported values must be designed and documented
+    * chart versions and application versions must be managed
+    * a new option may require changes to both the template and its values
+    * excessive options can turn `values.yaml` into a complex configuration API
+* choosing Helm
+  * use it when several consumers need a stable deployment interface
+  * use it when the application needs optional resources, dependencies, or conditional configuration
+  * use it when Helm should own release history, upgrades, and rollbacks
+* choosing Kustomize
+  * use it when one team controls the manifests and deployment pipeline
+  * use it when environments differ through small Kubernetes-specific changes
+  * use it when concrete Kubernetes YAML is preferred over templates
+  * use it when another system owns deployment history and rollback
+* using both for an internal service
+  * Helm can provide packaging and release management while Kustomize applies organization-specific changes
+  * expected configuration in a company-owned chart should normally be exposed through chart values
+  * use post-rendering for organization-wide policy or changes to a chart the company does not control
