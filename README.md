@@ -49,10 +49,12 @@
       * a Kustomize directory that references a base and describes one environment  
 
 * build process
-  * loads the resources listed by the selected `kustomization.yaml`
-  * recursively loads referenced bases
+  * loads the resources listed by the `kustomization.yaml` in the directory passed to `kubectl kustomize`
+  * recursively loads referenced Kustomization directories and the resources they declare
   * applies built-in transformations such as namespaces, labels, images, and replicas
+    * example: selects image tag
   * applies patches for targeted resource changes
+    * example: deployment-patch.yaml 
   * emits complete Kubernetes manifests
 * resource loading
   * Kustomize does not automatically load every YAML file in a directory
