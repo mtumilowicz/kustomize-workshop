@@ -59,16 +59,18 @@
 * resource loading
   * Kustomize does not automatically load every YAML file in a directory
     * explicit references make builds deterministic; unrelated YAML files are not included accidentally
+    * the file's role is declared in `kustomization.yaml`, not inferred from its directory or filename
+        * example: `deployment-patch.yaml` is read as a patch because it is listed under `patches`; it is not emitted as a separate Deployment
   * `resources` explicitly defines the files and Kustomize directories that belong to a build
     * a referenced YAML file contributes its Kubernetes object
     * a referenced directory contributes the objects declared by its own `kustomization.yaml`
-  * the general loading chain is
+  * the loading chain is
 
     ```text
-    selected overlay/kustomization.yaml ## kubectl kustomize kubernetes/overlays/development
-      -> referenced base/kustomization.yaml
-        -> referenced manifest files
-          -> loaded Kubernetes objects
+    overlays/development/kustomization.yaml # entry point passed to kubectl kustomize
+      -> referenced kustomization.yaml       # Kustomization listed under resources
+        -> referenced manifest files     # example: deployment.yaml, service.yaml
+          > loaded Kubernetes objects # objects available for transformation, example: object from deployment.yaml
     ```
 
   * example
@@ -89,19 +91,16 @@
         - service.yaml
       ```
 
-    * the loading chain is
-
-      ```text
-      overlays/development/kustomization.yaml
-        -> ../../base/kustomization.yaml
-          -> deployment.yaml -> Deployment/inventory-api
-          -> service.yaml    -> Service/inventory-api
-      ```
-
     * without those two base entries, `deployment.yaml` and `service.yaml` would be ignored
         * => overlay would have no Deployment or Service to transform
 * transformations
-  * a transformer applies a standard change across resources
+  * a transformer is Kustomize processing logic, not a Kubernetes resource
+  * it changes applicable fields in the loaded resources without requiring a patch
+  * a transformation may affect one resource or many resources, depending on how it selects them
+    * example
+        * `namespace` assigns namespace to every namespace-scoped resource (Deployment, Service etc)
+        * `labels` adds the environment label to loaded resources
+        * `replicas` sets the replica count on the specified workload
   * example
 
     ```yaml
@@ -110,14 +109,44 @@
     ```
 
 * patch targeting
-  * a patch applies targeted changes to a resource
+  * a patch describes changes to one or more resources already loaded by the current build
+    * referenced in `kustomization.yaml`
+        ```
+        patches:
+          - path: deployment-patch.yaml
+        ```
+  * Kustomize searches only the resources already loaded by the current build
+  * matching by
+    * patch's resource identity
+        * identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
+        * example
+            ```
+            # kustomization.yaml
+            patches:
+              - path: deployment-patch.yaml
+          
+            # deployment-patch.yaml
+            apiVersion: apps/v1
+            kind: Deployment
+            ```
+    * explicit `target` in `kustomization.yaml`
+        * identifies its target by explicitly stated target
+        * example
+          ```yaml
+          patches:
+            - path: deployment-patch.yaml
+              target: # every declared condition must match
+                group: apps
+                version: v1
+                kind: Deployment
+                name: inventory-api
+                namespace: inventory-development
+                labelSelector: app.kubernetes.io/name=inventory-api
+          ```
+
   * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
   * a practical convention is one overlay patch per target resource
     * focused means a clear target and limited scope, not one file per changed field
-  * `patches` registers patch files; it does not associate them with resources by filename
-  * Kustomize searches only the resources already loaded by the selected overlay
-    * a patch identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
-    * namespace and selectors can further restrict a target when declared in `kustomization.yaml`
   * example
     * the development overlay registers one patch
 
