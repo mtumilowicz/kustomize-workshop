@@ -25,12 +25,137 @@
   * starts from regular Kubernetes YAML rather than manifests containing placeholders
   * reads build instructions from a `kustomization.yaml` file
   * composes resources from files and other Kustomize directories
+* configuration model
+  * resource
+    * a Kubernetes manifest or Kustomize directory listed under `resources`
+  * example
+
+    ```text
+    kubernetes/
+    ├── base/
+    │   ├── deployment.yaml
+    │   ├── service.yaml
+    │   └── kustomization.yaml
+    └── overlays/
+        ├── development/
+        ├── staging/
+        └── production/
+    ```
+    * base
+      * a reusable Kustomize directory containing shared resources
+      * a project convention, not a Kubernetes API object
+      * composition-only in this workshop; render an overlay, not the base directly
+    * overlay
+      * a Kustomize directory that references a base and describes one environment  
+
 * build process
   * loads the resources listed by the selected `kustomization.yaml`
   * recursively loads referenced bases
   * applies built-in transformations such as namespaces, labels, images, and replicas
   * applies patches for targeted resource changes
   * emits complete Kubernetes manifests
+* resource loading
+  * Kustomize does not automatically load every YAML file in a directory
+  * `resources` explicitly defines the files and Kustomize directories that belong to a build
+  * a referenced YAML file contributes its Kubernetes object
+  * a referenced directory contributes the objects declared by its own `kustomization.yaml`
+  * the general loading chain is
+
+    ```text
+    selected overlay/kustomization.yaml
+      -> referenced base/kustomization.yaml
+        -> referenced manifest files
+          -> loaded Kubernetes objects
+    ```
+
+  * explicit references make builds deterministic; unrelated YAML files are not included accidentally
+  * example
+    * the development overlay references the base
+
+      ```yaml
+      # kubernetes/overlays/development/kustomization.yaml
+      resources:
+        - ../../base
+      ```
+
+    * Kustomize opens the referenced base and follows its resource declarations
+
+      ```yaml
+      # kubernetes/base/kustomization.yaml
+      resources:
+        - deployment.yaml
+        - service.yaml
+      ```
+
+    * the loading chain is
+
+      ```text
+      overlays/development/kustomization.yaml
+        -> ../../base/kustomization.yaml
+          -> deployment.yaml -> Deployment/inventory-api
+          -> service.yaml    -> Service/inventory-api
+      ```
+
+    * without those two base entries, `deployment.yaml` and `service.yaml` would be ignored and the overlay would have no Deployment or Service to transform
+* transformations
+  * a transformer applies a standard change across resources
+  * example
+
+    ```yaml
+    # kubernetes/overlays/development/kustomization.yaml
+    namespace: inventory-development # assigns the namespace
+    ```
+
+* patch targeting
+  * a patch applies targeted changes to a resource
+  * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
+  * a practical convention is one overlay patch per target resource
+    * focused means a clear target and limited scope, not one file per changed field
+  * `patches` registers patch files; it does not associate them with resources by filename
+  * Kustomize searches only the resources already loaded by the selected overlay
+  * a patch identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
+  * namespace and selectors can further restrict a target when declared in `kustomization.yaml`
+  * example
+    * the development overlay registers one patch
+
+      ```yaml
+      # kubernetes/overlays/development/kustomization.yaml
+      patches:
+        - path: deployment-patch.yaml
+      ```
+
+    * the patch content identifies its target
+
+      ```yaml
+      # kubernetes/overlays/development/deployment-patch.yaml
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: inventory-api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: inventory-api
+                imagePullPolicy: Always
+                env:
+                  - name: LOG_LEVEL
+                    value: DEBUG
+      ```
+
+    * the identity must match a loaded resource
+
+      | Patch field | Required target value |
+      |---|---|
+      | `apiVersion` | `apps/v1` |
+      | `kind` | `Deployment` |
+      | `metadata.name` | `inventory-api` |
+
+    * Kustomize finds `Deployment/inventory-api` from `base/deployment.yaml` and merges the patch into it
+    * `containers[].name: inventory-api` selects the Inventory API container inside that Deployment
+    * `deployment-patch.yaml` and `deployment.yaml` could be renamed without changing the target, provided their references were updated
+    * another Deployment with a different name is unaffected; a Deployment from an unreferenced base is never loaded
+    * if the patch named `another-api`, rendering would fail because no matching target exists
 * source and output
   * does not modify the source manifests while rendering
   * does not contact a cluster or deploy resources when using `kubectl kustomize`
@@ -78,67 +203,6 @@
   * with Kustomize
     * add the block once to `base/deployment.yaml`
     * development, staging, and production inherit it
-
-## example
-* structure
-    ```text
-    kubernetes/
-    ├── base/
-    │   ├── deployment.yaml
-    │   ├── service.yaml
-    │   └── kustomization.yaml
-    └── overlays/
-        ├── development/
-        ├── staging/
-        └── production/
-    ```
-* resource
-  * a Kubernetes manifest or Kustomize directory listed under `resources`
-* base
-  * a reusable Kustomize directory containing shared resources
-  * a project convention, not a Kubernetes API object
-  * composition-only in this workshop; render an overlay, not the base directly
-* overlay
-  * a Kustomize directory that references a base and describes one environment
-* transformer
-  * applies a standard change across resources
-  * example
-
-    ```yaml
-    # kubernetes/overlays/development/kustomization.yaml
-    namespace: inventory-development # assigns the namespace
-    ```
-
-* patch
-  * applies targeted changes to a resource
-  * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
-  * a practical convention is one overlay patch per target resource
-    * focused means a clear target and limited scope, not one file per changed field
-  * example
-
-    ```yaml
-    # kubernetes/overlays/development/deployment-patch.yaml
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: inventory-api
-    spec:
-      template:
-        spec:
-          containers:
-            - name: inventory-api
-              imagePullPolicy: Always
-              env: # customizes the Deployment
-                - name: LOG_LEVEL
-                  value: DEBUG
-    ```
-
-  * `kubernetes/overlays/development/kustomization.yaml` registers the patch
-
-    ```yaml
-    patches:
-      - path: deployment-patch.yaml
-    ```
 
 ## Kustomize and Helm
 
