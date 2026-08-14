@@ -58,19 +58,19 @@
   * emits complete Kubernetes manifests
 * resource loading
   * Kustomize does not automatically load every YAML file in a directory
+    * explicit references make builds deterministic; unrelated YAML files are not included accidentally
   * `resources` explicitly defines the files and Kustomize directories that belong to a build
-  * a referenced YAML file contributes its Kubernetes object
-  * a referenced directory contributes the objects declared by its own `kustomization.yaml`
+    * a referenced YAML file contributes its Kubernetes object
+    * a referenced directory contributes the objects declared by its own `kustomization.yaml`
   * the general loading chain is
 
     ```text
-    selected overlay/kustomization.yaml
+    selected overlay/kustomization.yaml ## kubectl kustomize kubernetes/overlays/development
       -> referenced base/kustomization.yaml
         -> referenced manifest files
           -> loaded Kubernetes objects
     ```
 
-  * explicit references make builds deterministic; unrelated YAML files are not included accidentally
   * example
     * the development overlay references the base
 
@@ -98,7 +98,8 @@
           -> service.yaml    -> Service/inventory-api
       ```
 
-    * without those two base entries, `deployment.yaml` and `service.yaml` would be ignored and the overlay would have no Deployment or Service to transform
+    * without those two base entries, `deployment.yaml` and `service.yaml` would be ignored
+        * => overlay would have no Deployment or Service to transform
 * transformations
   * a transformer applies a standard change across resources
   * example
@@ -115,8 +116,8 @@
     * focused means a clear target and limited scope, not one file per changed field
   * `patches` registers patch files; it does not associate them with resources by filename
   * Kustomize searches only the resources already loaded by the selected overlay
-  * a patch identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
-  * namespace and selectors can further restrict a target when declared in `kustomization.yaml`
+    * a patch identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
+    * namespace and selectors can further restrict a target when declared in `kustomization.yaml`
   * example
     * the development overlay registers one patch
 
