@@ -71,6 +71,9 @@
     * the source files remain unchanged
   * general rules
     * the directory passed to `kubectl kustomize` is the build entry point
+    * each Kustomize directory contains one Kustomization file
+      * recognized names: `kustomization.yaml`, `kustomization.yml`, or `Kustomization`
+      * more than one recognized file in the same directory causes an error
     * `resources` defines what Kustomize loads
       * a file adds one Kubernetes object
       * a directory adds the objects listed in its `kustomization.yaml`
