@@ -48,41 +48,17 @@
     * overlay
       * a Kustomize directory that references a base and describes one environment  
 
-* build process
-  * loads the resources listed by the `kustomization.yaml` in the directory passed to `kubectl kustomize`
-  * recursively loads referenced Kustomization directories and the resources they declare
-  * applies built-in transformations such as namespaces, labels, images, and replicas
-    * example: selects image tag
-  * applies patches for targeted resource changes
-    * example: deployment-patch.yaml 
-  * emits complete Kubernetes manifests
-* resource loading
-  * Kustomize does not automatically load every YAML file in a directory
-    * explicit references make builds deterministic; unrelated YAML files are not included accidentally
-    * the file's role is declared in `kustomization.yaml`, not inferred from its directory or filename
-        * example: `deployment-patch.yaml` is read as a patch because it is listed under `patches`; it is not emitted as a separate Deployment
-  * `resources` explicitly defines the files and Kustomize directories that belong to a build
-    * a referenced YAML file contributes its Kubernetes object
-    * a referenced directory contributes the objects declared by its own `kustomization.yaml`
-  * the loading chain is
-
-    ```text
-    overlays/development/kustomization.yaml # entry point passed to kubectl kustomize
-      -> referenced kustomization.yaml       # Kustomization listed under resources
-        -> referenced manifest files     # example: deployment.yaml, service.yaml
-          > loaded Kubernetes objects # objects available for transformation, example: object from deployment.yaml
-    ```
-
-  * example
-    * the development overlay references the base
+* build scope and processing
+  * example: `kubectl kustomize kubernetes/overlays/development`
+    * overlay defines the base to be loaded and declares the namespace transformation
 
       ```yaml
       # kubernetes/overlays/development/kustomization.yaml
+      namespace: inventory-development
       resources:
         - ../../base
       ```
-
-    * Kustomize opens the referenced base and follows its resource declarations
+    * the base loads its Deployment and Service
 
       ```yaml
       # kubernetes/base/kustomization.yaml
@@ -90,23 +66,172 @@
         - deployment.yaml
         - service.yaml
       ```
-
-    * without those two base entries, `deployment.yaml` and `service.yaml` would be ignored
-        * => overlay would have no Deployment or Service to transform
+    * the overlay applies `namespace: inventory-development` to both loaded objects
+    * Kustomize emits the transformed Deployment and Service
+    * the source files remain unchanged
+  * general rules
+    * the directory passed to `kubectl kustomize` is the build entry point
+    * `resources` defines what Kustomize loads
+      * a file adds one Kubernetes object
+      * a directory adds the objects listed in its `kustomization.yaml`
+        * triggers recursion: if it references more directories, Kustomize opens those too
+    * transformations apply to all resources loaded by that `kustomization.yaml`
+    * Kustomize does not automatically load every YAML file in a directory
+      * explicit references make builds deterministic
+      * unrelated YAML files are ignored
+    * `kustomization.yaml` defines how each file is used
+      * `resources` adds Kubernetes objects
+      * `patches` changes loaded objects
+        * example: `deployment-patch.yaml` is not emitted as a separate Deployment when it is listed under `patches`
+      * in particular: filenames do not determine their role
+    * transformations and patches do not modify source files
+    * the build emits complete Kubernetes manifests
 * transformations
   * a transformer is Kustomize processing logic, not a Kubernetes resource
   * it changes applicable fields in the loaded resources without requiring a patch
-  * a transformation may affect one resource or many resources, depending on how it selects them
-    * example
-        * `namespace` assigns namespace to every namespace-scoped resource (Deployment, Service etc)
-        * `labels` adds the environment label to loaded resources
-        * `replicas` sets the replica count on the specified workload
-  * example
+    * not always replaceable by patch
+        * example: `namespace: inventory-development` changes both the loaded Deployment and Service
+            * using patches would require separate targets for the Deployment and Service
+  * types
+      * changes applied across resources
+        * apply the same change to every applicable loaded resource
+        * do not select an individual resource by name
+        * `namespace`
+          * assigns a namespace to every namespace-scoped resource
+          * leaves cluster-scoped resources unchanged
+        * `labels`
+          * adds labels to applicable resource metadata
+          * can also add them to Pod templates and selectors
+        * `commonAnnotations`
+          * vs labels
+            * labels identify and group resources
+                * used by selectors and queries.
+            * annotations attach non-identifying information
+                * cannot be used by Kubernetes selectors
+                * used by tools or humans as metadata
+          * adds the same annotations to applicable resource metadata
+      * changes applied to matching resources
+        * select a resource or field using a configured name
+        * leave non-matching resources unchanged
+        * `images`
+          * finds matching container image references across all loaded resources
+          * changes their registry, image name, tag, or digest
+          * leaves non-matching image references unchanged
+        * `replicas`
+          * matches a workload by `metadata.name`
+          * sets its replica count
+* generators
+  * create new Kubernetes resources from files or values during rendering
+  * `configMapGenerator`
+    * creates a Kubernetes ConfigMap from files, literal values, or environment files during rendering
+    * adds a content hash to the generated ConfigMap name
+      * source files use the name without the hash
+      * Kustomize adds the hash to the generated ConfigMap name
+      * Kustomize adds the same name to references in the rendered resources
+      * changing the ConfigMap content changes the hash
+      * the new name changes the Pod template and triggers a rollout
+    * example: generate a ConfigMap containing `application.yml`
+      * reason: use the original Spring Boot configuration file without including it in the container image or copying its contents into a ConfigMap manifest
+      * `kustomization.yaml`
+    
+        ```yaml
+        configMapGenerator:
+          - name: spring-boot-k8s-gitops-flux-sops-workshop-config
+            files:
+              - application.yml=../config/application.yml # entries use `key=source-path`: key becomes an entry in the ConfigMap, source file contents become the entry's value
+        ```
+    
+      * generates
+    
+        ```yaml
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: spring-boot-k8s-gitops-flux-sops-workshop-config-<content-hash>
+        data:
+          application.yml: |
+            # contents of ../config/application.yml
+        ```
 
-    ```yaml
-    # kubernetes/overlays/development/kustomization.yaml
-    namespace: inventory-development # assigns the namespace
-    ```
+      * mount the generated entry as a file and direct Spring Boot to its directory
+
+        ```yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: spring-boot-k8s-gitops-flux-sops-workshop
+        spec:
+          template:
+            spec:
+              containers:
+                - name: application
+                  env:
+                    - name: SPRING_CONFIG_ADDITIONAL_LOCATION # 4. tell Spring Boot where to read pod volume
+                      value: optional:file:/app/config/
+                  volumeMounts: # 3. mount Pod volume into the container at /app/config
+                    - name: application-config
+                      mountPath: /app/config
+                      readOnly: true
+              volumes: # 1. creates a Pod volume named application-config using this ConfigMap
+                - name: application-config
+                  configMap: # 2. each ConfigMap key becomes a file in the mounted volume
+                    name: spring-boot-k8s-gitops-flux-sops-workshop-config
+        ```
+  * `secretGenerator`
+    * creates a Kubernetes Secret from files, literal values, or environment files during rendering
+    * adds a content hash to the generated Secret name
+      * source files use the name without the hash
+      * Kustomize adds the hash to the generated Secret name
+      * Kustomize adds the same name to references in the rendered resources
+      * changing the Secret content changes the hash
+      * the new name changes the Pod template and triggers a rollout
+    * example: generate a Secret containing Spring Boot database credentials
+      * reason: provide credentials without including them in the container image or copying them into a Secret manifest
+      * file: `database.env` (not committed, resolved locally)
+        ```
+        SPRING_DATASOURCE_USERNAME=workshop
+        SPRING_DATASOURCE_PASSWORD=change-me
+        ```
+      * `kustomization.yaml`
+        ```yaml
+        secretGenerator:
+          - name: database-credentials
+            envs:
+              - database.env # each entry becomes a key-value pair in the Secret
+        ```
+      * generates
+  
+        ```yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: database-credentials-<content-hash>
+        type: Opaque
+        data:
+          SPRING_DATASOURCE_USERNAME: <base64-encoded-value>
+          SPRING_DATASOURCE_PASSWORD: <base64-encoded-value>
+        ```
+      * expose the generated Secret entries as container environment variables
+        ```yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: spring-boot-k8s-gitops-flux-sops-workshop
+        spec:
+          template:
+            spec:
+              containers:
+                - name: application
+                  envFrom:
+                    - secretRef: # adds every Secret entry as an environment variable
+                        name: database-credentials
+        ```
+      * Spring Boot maps the environment variables to application properties
+        * `SPRING_DATASOURCE_USERNAME` becomes `spring.datasource.username`
+        * `SPRING_DATASOURCE_PASSWORD` becomes `spring.datasource.password`
+      * generation does not encrypt secret values
+        * Kubernetes stores these values as base64-encoded data
+        * do not commit the plaintext `database.env` file
 
 * patch targeting
   * a patch describes changes to one or more resources already loaded by the current build
