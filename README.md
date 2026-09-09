@@ -85,7 +85,6 @@
           
         * a practical convention is one focused patch file per target object
           * focused means a clear target and limited scope, not one file per changed field
-     * the patch file is not added as a separate object
      * filenames do not determine whether files are resources or patches
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
      * inspect the output, redirect it to a file, or pass it to another command
