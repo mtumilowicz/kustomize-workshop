@@ -31,7 +31,7 @@
   * example
 
     ```text
-    kubernetes/
+    manifests/
     ├── base/
     │   ├── deployment.yaml
     │   ├── service.yaml
@@ -49,11 +49,11 @@
       * a Kustomize directory that references a base and describes one environment  
 
 * build scope and processing
-  * example: `kubectl kustomize kubernetes/overlays/dev`
+  * example: `kubectl kustomize manifests/overlays/dev`
     * overlay defines the base to be loaded and declares the namespace transformation
 
       ```yaml
-      # kubernetes/overlays/dev/kustomization.yaml
+      # manifests/overlays/dev/kustomization.yaml
       namespace: inventory-dev
       resources:
         - ../../base
@@ -61,7 +61,7 @@
     * the base loads its Deployment and Service
 
       ```yaml
-      # kubernetes/base/kustomization.yaml
+      # manifests/base/kustomization.yaml
       resources:
         - deployment.yaml
         - service.yaml
@@ -279,7 +279,7 @@
     * the development overlay registers one patch
 
       ```yaml
-      # kubernetes/overlays/dev/kustomization.yaml
+      # manifests/overlays/dev/kustomization.yaml
       patches:
         - path: deployment-patch.yaml
       ```
@@ -287,7 +287,7 @@
     * the patch content identifies its target
 
       ```yaml
-      # kubernetes/overlays/dev/deployment-patch.yaml
+      # manifests/overlays/dev/deployment-patch.yaml
       apiVersion: apps/v1
       kind: Deployment
       metadata:
@@ -324,7 +324,7 @@
   * point `kubectl kustomize` to a directory containing `kustomization.yaml`
 
     ```bash
-    kubectl kustomize kubernetes/overlays/dev
+    kubectl kustomize manifests/overlays/dev
     ```
 
   * prints the final Kubernetes YAML to standard output
