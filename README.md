@@ -63,12 +63,24 @@
            * contains
              * fields that identify the target object
              * fields that identify nested list items
-               * example: `containers[].name`
+               * example: `containers[].name` identifies the container to modify
+
+                 ```yaml
+                 containers:
+                   - name: inventory-api
+                     imagePullPolicy: Always # Kustomize changes imagePullPolicy.
+                 ```
+
              * fields to add, change, or delete
+               * example: add the `team=platform` label
+
+                 ```yaml
+                 metadata:
+                   labels:
+                     team: platform
+                 ```
+
            * unchanged fields can be omitted
-           * when changing a list, Kustomize uses the Kubernetes merge key to find the list item
-             * example: `containers[].name` identifies a container
-             * Kustomize changes that container without replacing the other containers
            * targeting by resource identity
              * when `target` is omitted, Kustomize compares `apiVersion`, `kind`, and `metadata.name`
              * Kustomize applies the patch to the object with matching identity
