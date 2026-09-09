@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: inventory-production
+namespace: inventory-prod
 resources:
   - ../../base
 images:
@@ -11,7 +11,7 @@ replicas:
     count: 4
 labels:
   - pairs:
-      app.kubernetes.io/environment: production
+      app.kubernetes.io/environment: prod
     includeTemplates: true
 patches:
   - path: deployment-patch.yaml

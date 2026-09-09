@@ -37,9 +37,9 @@
     │   ├── service.yaml
     │   └── kustomization.yaml
     └── overlays/
-        ├── development/
+        ├── dev/
         ├── staging/
-        └── production/
+        └── prod/
     ```
     * base
       * a reusable Kustomize directory containing shared resources
@@ -49,12 +49,12 @@
       * a Kustomize directory that references a base and describes one environment  
 
 * build scope and processing
-  * example: `kubectl kustomize kubernetes/overlays/development`
+  * example: `kubectl kustomize kubernetes/overlays/dev`
     * overlay defines the base to be loaded and declares the namespace transformation
 
       ```yaml
-      # kubernetes/overlays/development/kustomization.yaml
-      namespace: inventory-development
+      # kubernetes/overlays/dev/kustomization.yaml
+      namespace: inventory-dev
       resources:
         - ../../base
       ```
@@ -66,7 +66,7 @@
         - deployment.yaml
         - service.yaml
       ```
-    * the overlay applies `namespace: inventory-development` to both loaded objects
+    * the overlay applies `namespace: inventory-dev` to both loaded objects
     * Kustomize emits the transformed Deployment and Service
     * the source files remain unchanged
   * general rules
@@ -93,7 +93,7 @@
   * a transformer is Kustomize processing logic, not a Kubernetes resource
   * it changes applicable fields in the loaded resources without requiring a patch
     * not always replaceable by patch
-        * example: `namespace: inventory-development` changes both the loaded Deployment and Service
+        * example: `namespace: inventory-dev` changes both the loaded Deployment and Service
             * using patches would require separate targets for the Deployment and Service
   * types
       * changes applied across resources
@@ -268,7 +268,7 @@
                 version: v1
                 kind: Deployment
                 name: inventory-api
-                namespace: inventory-development
+                namespace: inventory-dev
                 labelSelector: app.kubernetes.io/name=inventory-api
           ```
 
@@ -279,7 +279,7 @@
     * the development overlay registers one patch
 
       ```yaml
-      # kubernetes/overlays/development/kustomization.yaml
+      # kubernetes/overlays/dev/kustomization.yaml
       patches:
         - path: deployment-patch.yaml
       ```
@@ -287,7 +287,7 @@
     * the patch content identifies its target
 
       ```yaml
-      # kubernetes/overlays/development/deployment-patch.yaml
+      # kubernetes/overlays/dev/deployment-patch.yaml
       apiVersion: apps/v1
       kind: Deployment
       metadata:
@@ -324,7 +324,7 @@
   * point `kubectl kustomize` to a directory containing `kustomization.yaml`
 
     ```bash
-    kubectl kustomize kubernetes/overlays/development
+    kubectl kustomize kubernetes/overlays/dev
     ```
 
   * prints the final Kubernetes YAML to standard output
@@ -402,9 +402,9 @@
       │           ├── deployment.yaml
       │           └── service.yaml
       └── environments/
-          ├── development.yaml
+          ├── dev.yaml
           ├── staging.yaml
-          └── production.yaml
+          └── prod.yaml
       ```
 
     * `chart/inventory-api/values.yaml` contains documented defaults
@@ -415,15 +415,15 @@
 
       ```bash
       helm template inventory-api deploy/chart/inventory-api \
-        --values deploy/environments/production.yaml
+        --values deploy/environments/prod.yaml
       ```
 
     * install or upgrade production
 
       ```bash
       helm upgrade --install inventory-api deploy/chart/inventory-api \
-        --namespace inventory-production \
-        --values deploy/environments/production.yaml
+        --namespace inventory-prod \
+        --values deploy/environments/prod.yaml
       ```
 
   * configuration interface
@@ -494,7 +494,7 @@
       helm upgrade --install inventory-api \
         oci://registry.example.com/charts/inventory-api \
         --version 0.8.1 \
-        --values deploy/environments/production.yaml
+        --values deploy/environments/prod.yaml
       ```
 
     * a packaged chart is useful when CI, regional clusters, or other repositories must consume the same immutable deployment contract without checking out the chart source
@@ -504,7 +504,7 @@
     * the chart can render it only for clusters where Prometheus Operator is installed
 
       ```yaml
-      # deploy/environments/production.yaml
+      # deploy/environments/prod.yaml
       monitoring:
         serviceMonitor:
           enabled: true
@@ -536,7 +536,7 @@
     * development enables the Redis subchart to install a self-contained Redis instance with the application
 
       ```yaml
-      # deploy/environments/development.yaml
+      # deploy/environments/dev.yaml
       redis:
         enabled: true
       ```
@@ -544,7 +544,7 @@
     * production disables the bundled Redis dependency and points the Inventory API at a separately managed Redis service
 
       ```yaml
-      # deploy/environments/production.yaml
+      # deploy/environments/prod.yaml
       redis:
         enabled: false
 
