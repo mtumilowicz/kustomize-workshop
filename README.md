@@ -92,6 +92,10 @@
 
            * targeting with `target`
              * a strategic merge patch can include `target`
+                * when `target` is present
+                  * only fields specified in `target` select the objects
+                  * `metadata.name` in the patch is required but does not participate in selection
+                  * `apiVersion` and `kind` still define how Kustomize interprets the patch
              * `target` can contain `group`, `version`, `kind`, `name`, `namespace`, `labelSelector`, and `annotationSelector`
              * every field specified in `target` must match
              * use case: apply the same change to a group of objects
@@ -116,10 +120,6 @@
                      team: platform
                  ```
 
-             * when `target` is present
-               * only fields specified in `target` select the objects
-               * `metadata.name` in the patch is required but does not participate in selection
-               * `apiVersion` and `kind` still define how Kustomize interprets the patch
          * JSON Patch
            * describes field changes as operations
              * supported operations include `add`, `remove`, and `replace`
