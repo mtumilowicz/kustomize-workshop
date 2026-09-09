@@ -52,6 +52,7 @@
          - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
        ```
      * the patch modifies matching objects already in the resource set (already loaded by the current build)
+        * in particular: the patch file is not added as a separate object
         * matching strategies
           * patch's resource identity
               * identify the target with `apiVersion`, `kind`, and `metadata.name` in the patch file
