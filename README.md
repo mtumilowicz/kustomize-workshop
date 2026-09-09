@@ -43,7 +43,7 @@
     ```
     * base
       * a reusable Kustomize directory containing shared resources
-      * a project convention, not a Kubernetes API object
+      * a project convention
       * composition-only in this workshop; render an overlay, not the base directly
     * overlay
       * a Kustomize directory that references a base and describes one environment  
