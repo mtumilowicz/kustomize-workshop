@@ -21,74 +21,56 @@
   * customizes Kubernetes resources without introducing a template language
   * keeps common configuration in one place and expresses intentional differences separately
   * is built into `kubectl`; a separate Kustomize installation is not required for this workshop
-* input
-  * starts from regular Kubernetes YAML rather than manifests containing placeholders
-  * reads build instructions from a `kustomization.yaml` file
-  * composes resources from files and other Kustomize directories
-* configuration model
-  * resource
-    * a Kubernetes manifest or Kustomize directory listed under `resources`
-  * example
+* render
+  * purpose: produce complete Kubernetes manifests without changing a cluster
+  1. run Kustomize against a directory that contains a Kustomization file
 
-    ```text
-    manifests/
-    ├── base/
-    │   ├── deployment.yaml
-    │   ├── service.yaml
-    │   └── kustomization.yaml
-    └── overlays/
-        ├── dev/
-        ├── staging/
-        └── prod/
-    ```
-    * base
-      * a reusable Kustomize directory containing shared resources
-      * a project convention
-      * composition-only in this workshop; render an overlay, not the base directly
-    * overlay
-      * a Kustomize directory that references a base and describes one environment  
+     ```bash
+     kubectl kustomize <kustomization-directory>
+     ```
 
-* build scope and processing
-  * example: `kubectl kustomize manifests/overlays/dev`
-    * overlay defines the base to be loaded and declares the namespace transformation
+  2. Kustomize reads one Kustomization file from that directory
+     * in particular: kustomization-directory = directory path, not the path to the Kustomization file
+     * recognized names: `kustomization.yaml`, `kustomization.yml`, or `Kustomization`
+     * more than one recognized file in the same directory causes an error
+  3. Kustomize creates an in-memory resource set from the paths specified in `resources`
+     * example
 
-      ```yaml
-      # manifests/overlays/dev/kustomization.yaml
-      namespace: inventory-dev
-      resources:
-        - ../../base
-      ```
-    * the base loads its Deployment and Service
+       ```yaml
+       resources: # list of paths to manifest files or Kustomize directories
+         - deployment.yaml
+       ```
 
-      ```yaml
-      # manifests/base/kustomization.yaml
-      resources:
-        - deployment.yaml
-        - service.yaml
-      ```
-    * the overlay applies `namespace: inventory-dev` to both loaded objects
-    * Kustomize emits the transformed Deployment and Service
-    * the source files remain unchanged
-  * general rules
-    * the directory passed to `kubectl kustomize` is the build entry point
-    * each Kustomize directory contains one Kustomization file
-      * recognized names: `kustomization.yaml`, `kustomization.yml`, or `Kustomization`
-      * more than one recognized file in the same directory causes an error
-    * `resources` defines what Kustomize loads
-      * a file adds one Kubernetes object
-      * a directory adds the objects listed in its `kustomization.yaml`
-        * triggers recursion: if it references more directories, Kustomize opens those too
-    * transformations apply to all resources loaded by that `kustomization.yaml`
-    * Kustomize does not automatically load every YAML file in a directory
-      * explicit references make builds deterministic
-      * unrelated YAML files are ignored
-    * `kustomization.yaml` defines how each file is used
-      * `resources` adds Kubernetes objects
-      * `patches` changes loaded objects
-        * example: `deployment-patch.yaml` is not emitted as a separate Deployment when it is listed under `patches`
-      * in particular: filenames do not determine their role
-    * transformations and patches do not modify source files
-    * the build emits complete Kubernetes manifests
+     * relative paths are resolved from the directory that contains the current Kustomization file
+     * a manifest file contributes its Kubernetes objects to the current resource set
+     * a Kustomize directory contributes the resource set produced by its Kustomization file
+     * a YAML file that is not reachable through paths specified in `resources` is ignored
+  4. Kustomize applies configured patches and transformations to the resource set
+     * example
+  
+       ```yaml
+       patches: # identifies a patch file
+         - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
+       ```
+     * the patch modifies matching objects already in the resource set
+     * the patch file is not added as a separate object
+     * filenames do not determine whether files are resources or patches
+  5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
+     * inspect the output, redirect it to a file, or pass it to another command
+  * notes
+    * rendering does not modify source files
+    * rendering does not contact a Kubernetes cluster
+* apply
+  * purpose: create or update Kubernetes objects from a Kustomization
+  1. apply a Kustomization directory
+
+     ```bash
+     kubectl apply -k <kustomization-directory>
+     ```
+
+  2. `kubectl` renders the Kustomization
+  3. `kubectl` sends the rendered objects to the Kubernetes API
+  4. the Kubernetes API creates new objects and updates existing objects
 * transformations
   * a transformer is Kustomize processing logic, not a Kubernetes resource
   * it changes applicable fields in the loaded resources without requiring a patch
@@ -221,19 +203,6 @@
     * `deployment-patch.yaml` and `deployment.yaml` could be renamed without changing the target, provided their references were updated
     * another Deployment with a different name is unaffected; a Deployment from an unreferenced base is never loaded
     * if the patch named `another-api`, rendering would fail because no matching target exists
-* source and output
-  * does not modify the source manifests while rendering
-  * does not contact a cluster or deploy resources when using `kubectl kustomize`
-  * produces YAML that can be reviewed, compared, or passed to a separate deployment step
-* rendering
-  * point `kubectl kustomize` to a directory containing `kustomization.yaml`
-
-    ```bash
-    kubectl kustomize manifests/overlays/dev
-    ```
-
-  * prints the final Kubernetes YAML to standard output
-  * does not deploy resources or require a cluster
 * benefits
   * shared changes are made once in the base
   * overlays contain only environment-specific intent
@@ -542,3 +511,36 @@
 
     * this keeps organization policy outside unrelated vendor chart templates and avoids maintaining chart forks
     * every install and upgrade must use the same post-renderer so Helm operates on repeatable rendered output
+* project structure
+  * base and overlay are project conventions, not Kustomize object types
+
+    ```text
+    manifests/
+    ├── base/
+    │   ├── deployment.yaml
+    │   ├── service.yaml
+    │   └── kustomization.yaml
+    └── overlays/
+        ├── dev/
+        ├── staging/
+        └── prod/
+    ```
+
+  * `base/kustomization.yaml` lists the shared resource manifests
+
+    ```yaml
+    # manifests/base/kustomization.yaml
+    resources:
+      - deployment.yaml
+      - service.yaml
+    ```
+
+  * each directory under `overlays` loads `base` and adds environment-specific configuration
+  * the development overlay sets `namespace` because this workshop deploys development resources to `inventory-dev`
+
+    ```yaml
+    # manifests/overlays/dev/kustomization.yaml
+    namespace: inventory-dev
+    resources:
+      - ../../base
+    ```
