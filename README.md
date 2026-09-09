@@ -56,39 +56,42 @@
      * the filename does not determine whether Kustomize uses the file as a patch
        * specifying the file path in `patches[].path` determines this role
      * the patch modifies matching objects already in the resource set (already loaded by the current build)
-        * in particular: the patch file is not added as a separate object
-        * matching strategies
-          * patch's resource identity
-              * identify the target with `apiVersion`, `kind`, and `metadata.name` in the patch file
-                  * example
-                      ```
-                      # deployment-patch.yaml
-                      apiVersion: apps/v1
-                      kind: Deployment
-                      metadata:
-                        name: inventory-api
-                      ```
-              * usual convention for a strategic merge patch that changes one object
-                * in particular: omits explicit `target`
+       * in particular: the patch file is not added as a separate object
+       * matching strategies
+         * patch's resource identity
+           * identify the target with `apiVersion`, `kind`, and `metadata.name` in the patch file
+             * example
 
-          * explicit `target` in `kustomization.yaml`
-            * required for a JSON6902 patch
-            * useful when one patch selects multiple objects or uses label, annotation, or name-pattern selection
-                  * example
-                    ```yaml
-                    patches:
-                      - path: deployment-patch.yaml
-                        target: # every declared condition must match
-                          group: apps
-                          version: v1
-                          kind: Deployment
-                          name: inventory-api
-                          namespace: inventory-dev
-                          labelSelector: app.kubernetes.io/name=inventory-api
-                    ```
-          
-        * a practical convention is one focused patch file per target object
-          * focused means a clear target and limited scope, not one file per changed field
+               ```
+               # deployment-patch.yaml
+               apiVersion: apps/v1
+               kind: Deployment
+               metadata:
+                 name: inventory-api
+               ```
+
+           * usual convention for a strategic merge patch that changes one object
+             * in particular: omits explicit `target`
+
+         * explicit `target` in `kustomization.yaml`
+           * required for a JSON6902 patch
+           * useful when one patch selects multiple objects or uses label, annotation, or name-pattern selection
+             * example
+
+               ```yaml
+               patches:
+                 - path: deployment-patch.yaml
+                   target: # every declared condition must match
+                     group: apps
+                     version: v1
+                     kind: Deployment
+                     name: inventory-api
+                     namespace: inventory-dev
+                     labelSelector: app.kubernetes.io/name=inventory-api
+               ```
+
+       * a practical convention is one focused patch file per target object
+         * focused means a clear target and limited scope, not one file per changed field
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
      * inspect the output, redirect it to a file, or pass it to another command
   * notes
