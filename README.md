@@ -72,7 +72,7 @@
                  ```
 
              * fields to add, change, or delete
-               * example: add the `team=platform` label
+               * example: add `team=platform` to `metadata.labels` of the target object
 
                  ```yaml
                  metadata:
