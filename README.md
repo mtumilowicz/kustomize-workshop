@@ -57,41 +57,93 @@
        * specifying the file path in `patches[].path` determines this role
      * the patch modifies matching objects already in the resource set (already loaded by the current build)
        * in particular: the patch file is not added as a separate object
-       * matching strategies
-         * patch's resource identity
-           * identify the target with `apiVersion`, `kind`, and `metadata.name` in the patch file
+       * patch types
+         * strategic merge patch
+           * is written as a Kubernetes object with `apiVersion`, `kind`, `metadata`, and the fields to modify
+           * contains
+             * fields that identify the target object
+             * fields that identify nested list items
+               * example: `containers[].name`
+             * fields to add, change, or delete
+           * unchanged fields can be omitted
+           * when changing a list, Kustomize uses the Kubernetes merge key to find the list item
+             * example: `containers[].name` identifies a container
+             * Kustomize changes that container without replacing the other containers
+           * targeting by resource identity
+             * when `target` is omitted, Kustomize compares `apiVersion`, `kind`, and `metadata.name`
+             * Kustomize applies the patch to the object with matching identity
              * example
 
+               ```yaml
+               # kustomization.yaml
+               patches:
+                 - path: replicas-patch.yaml
                ```
-               # deployment-patch.yaml
+
+               ```yaml
+               # replicas-patch.yaml
                apiVersion: apps/v1
                kind: Deployment
                metadata:
                  name: inventory-api
+               spec:
+                 replicas: 3
                ```
 
-           * usual convention for a strategic merge patch that changes one object
-             * in particular: omits explicit `target`
+           * targeting with `target`
+             * a strategic merge patch can include `target`
+             * `target` can contain `group`, `version`, `kind`, `name`, `namespace`, `labelSelector`, and `annotationSelector`
+             * every field specified in `target` must match
+             * use case: apply the same change to a group of objects
+               * example: add `team=platform` to every Deployment labeled `env=dev`
 
-         * explicit `target` in `kustomization.yaml`
-           * required for a JSON6902 patch
-           * useful when one patch selects multiple objects or uses label, annotation, or name-pattern selection
-             * example
+                 ```yaml
+                 # kustomization.yaml
+                 patches:
+                   - path: team-patch.yaml
+                     target:
+                       kind: Deployment
+                       labelSelector: env=dev
+                 ```
 
-               ```yaml
-               patches:
-                 - path: deployment-patch.yaml
-                   target: # every declared condition must match
-                     group: apps
-                     version: v1
-                     kind: Deployment
-                     name: inventory-api
-                     namespace: inventory-dev
-                     labelSelector: app.kubernetes.io/name=inventory-api
-               ```
+                 ```yaml
+                 # team-patch.yaml
+                 apiVersion: apps/v1
+                 kind: Deployment
+                 metadata:
+                   name: required-placeholder
+                   labels:
+                     team: platform
+                 ```
 
-       * a practical convention is one focused patch file per target object
-         * focused means a clear target and limited scope, not one file per changed field
+             * when `target` is present
+               * only fields specified in `target` select the objects
+               * `metadata.name` in the patch is required but does not participate in selection
+               * `apiVersion` and `kind` still define how Kustomize interprets the patch
+         * JSON Patch
+           * describes field changes as operations
+             * supported operations include `add`, `remove`, and `replace`
+           * contains no Kubernetes resource identity
+           * requires `target` in the Kustomization
+           * example
+
+             ```yaml
+             # kustomization.yaml
+             patches:
+               - path: replicas-patch.yaml
+                 target:
+                   group: apps
+                   version: v1
+                   kind: Deployment
+                   name: inventory-api
+             ```
+
+             ```yaml
+             # replicas-patch.yaml
+             - op: replace
+               path: /spec/replicas
+               value: 3
+             ```
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
      * inspect the output, redirect it to a file, or pass it to another command
   * notes
