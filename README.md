@@ -41,6 +41,8 @@
          - deployment.yaml # relative path = resolved from the Kustomization directory
        ```
 
+     * the filename does not determine whether Kustomize uses the file as a resource
+       * specifying the file path in `resources` determines this role
      * a manifest file contributes its Kubernetes objects to the current resource set
      * a Kustomize directory contributes the resource set produced by its Kustomization file
      * a YAML file that is not reachable through paths specified in `resources` is ignored
@@ -51,6 +53,8 @@
        patches: # identifies a patch file
          - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
        ```
+     * the filename does not determine whether Kustomize uses the file as a patch
+       * specifying the file path in `patches[].path` determines this role
      * the patch modifies matching objects already in the resource set (already loaded by the current build)
         * in particular: the patch file is not added as a separate object
         * matching strategies
@@ -85,7 +89,6 @@
           
         * a practical convention is one focused patch file per target object
           * focused means a clear target and limited scope, not one file per changed field
-     * filenames do not determine whether files are resources or patches
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
      * inspect the output, redirect it to a file, or pass it to another command
   * notes
