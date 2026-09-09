@@ -38,10 +38,9 @@
 
        ```yaml
        resources: # list of paths to manifest files or Kustomize directories
-         - deployment.yaml
+         - deployment.yaml # relative path = resolved from the Kustomization directory
        ```
 
-     * relative paths are resolved from the directory that contains the current Kustomization file
      * a manifest file contributes its Kubernetes objects to the current resource set
      * a Kustomize directory contributes the resource set produced by its Kustomization file
      * a YAML file that is not reachable through paths specified in `resources` is ignored
@@ -52,7 +51,39 @@
        patches: # identifies a patch file
          - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
        ```
-     * the patch modifies matching objects already in the resource set
+     * the patch modifies matching objects already in the resource set (already loaded by the current build)
+        * matching strategies
+          * patch's resource identity
+              * identify the target with `apiVersion`, `kind`, and `metadata.name` in the patch file
+                  * example
+                      ```
+                      # deployment-patch.yaml
+                      apiVersion: apps/v1
+                      kind: Deployment
+                      metadata:
+                        name: inventory-api
+                      ```
+              * usual convention for a strategic merge patch that changes one object
+                * in particular: omits explicit `target`
+
+          * explicit `target` in `kustomization.yaml`
+            * required for a JSON6902 patch
+            * useful when one patch selects multiple objects or uses label, annotation, or name-pattern selection
+                  * example
+                    ```yaml
+                    patches:
+                      - path: deployment-patch.yaml
+                        target: # every declared condition must match
+                          group: apps
+                          version: v1
+                          kind: Deployment
+                          name: inventory-api
+                          namespace: inventory-dev
+                          labelSelector: app.kubernetes.io/name=inventory-api
+                    ```
+          
+        * a practical convention is one focused patch file per target object
+          * focused means a clear target and limited scope, not one file per changed field
      * the patch file is not added as a separate object
      * filenames do not determine whether files are resources or patches
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
@@ -123,86 +154,6 @@
       * Kustomize adds the same name to references in the rendered resources
       * changing the Secret content changes the hash
       * the new name changes the Pod template and triggers a rollout
-* patch targeting
-  * a patch describes changes to one or more resources already loaded by the current build
-    * referenced in `kustomization.yaml`
-        ```
-        patches:
-          - path: deployment-patch.yaml
-        ```
-  * Kustomize searches only the resources already loaded by the current build
-  * matching by
-    * patch's resource identity
-        * identifies its target by Kubernetes resource identity: API group/version, kind, and `metadata.name`
-        * example
-            ```
-            # kustomization.yaml
-            patches:
-              - path: deployment-patch.yaml
-          
-            # deployment-patch.yaml
-            apiVersion: apps/v1
-            kind: Deployment
-            ```
-    * explicit `target` in `kustomization.yaml`
-        * identifies its target by explicitly stated target
-        * example
-          ```yaml
-          patches:
-            - path: deployment-patch.yaml
-              target: # every declared condition must match
-                group: apps
-                version: v1
-                kind: Deployment
-                name: inventory-api
-                namespace: inventory-dev
-                labelSelector: app.kubernetes.io/name=inventory-api
-          ```
-
-  * [Kubernetes recommends small patches that do one thing](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#customizing)
-  * a practical convention is one overlay patch per target resource
-    * focused means a clear target and limited scope, not one file per changed field
-  * example
-    * the development overlay registers one patch
-
-      ```yaml
-      # manifests/overlays/dev/kustomization.yaml
-      patches:
-        - path: deployment-patch.yaml
-      ```
-
-    * the patch content identifies its target
-
-      ```yaml
-      # manifests/overlays/dev/deployment-patch.yaml
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: inventory-api
-      spec:
-        template:
-          spec:
-            containers:
-              - name: inventory-api
-                imagePullPolicy: Always
-                env:
-                  - name: LOG_LEVEL
-                    value: DEBUG
-      ```
-
-    * the identity must match a loaded resource
-
-      | Patch field | Required target value |
-      |---|---|
-      | `apiVersion` | `apps/v1` |
-      | `kind` | `Deployment` |
-      | `metadata.name` | `inventory-api` |
-
-    * Kustomize finds `Deployment/inventory-api` from `base/deployment.yaml` and merges the patch into it
-    * `containers[].name: inventory-api` selects the Inventory API container inside that Deployment
-    * `deployment-patch.yaml` and `deployment.yaml` could be renamed without changing the target, provided their references were updated
-    * another Deployment with a different name is unaffected; a Deployment from an unreferenced base is never loaded
-    * if the patch named `another-api`, rendering would fail because no matching target exists
 * benefits
   * shared changes are made once in the base
   * overlays contain only environment-specific intent
