@@ -133,53 +133,6 @@
       * Kustomize adds the same name to references in the rendered resources
       * changing the ConfigMap content changes the hash
       * the new name changes the Pod template and triggers a rollout
-    * example: generate a ConfigMap containing `application.yml`
-      * reason: use the original Spring Boot configuration file without including it in the container image or copying its contents into a ConfigMap manifest
-      * `kustomization.yaml`
-    
-        ```yaml
-        configMapGenerator:
-          - name: spring-boot-k8s-gitops-flux-sops-workshop-config
-            files:
-              - application.yml=../config/application.yml # entries use `key=source-path`: key becomes an entry in the ConfigMap, source file contents become the entry's value
-        ```
-    
-      * generates
-    
-        ```yaml
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: spring-boot-k8s-gitops-flux-sops-workshop-config-<content-hash>
-        data:
-          application.yml: |
-            # contents of ../config/application.yml
-        ```
-
-      * mount the generated entry as a file and direct Spring Boot to its directory
-
-        ```yaml
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: spring-boot-k8s-gitops-flux-sops-workshop
-        spec:
-          template:
-            spec:
-              containers:
-                - name: application
-                  env:
-                    - name: SPRING_CONFIG_ADDITIONAL_LOCATION # 4. tell Spring Boot where to read pod volume
-                      value: optional:file:/app/config/
-                  volumeMounts: # 3. mount Pod volume into the container at /app/config
-                    - name: application-config
-                      mountPath: /app/config
-                      readOnly: true
-              volumes: # 1. creates a Pod volume named application-config using this ConfigMap
-                - name: application-config
-                  configMap: # 2. each ConfigMap key becomes a file in the mounted volume
-                    name: spring-boot-k8s-gitops-flux-sops-workshop-config
-        ```
   * `secretGenerator`
     * creates a Kubernetes Secret from files, literal values, or environment files during rendering
     * adds a content hash to the generated Secret name
@@ -188,54 +141,6 @@
       * Kustomize adds the same name to references in the rendered resources
       * changing the Secret content changes the hash
       * the new name changes the Pod template and triggers a rollout
-    * example: generate a Secret containing Spring Boot database credentials
-      * reason: provide credentials without including them in the container image or copying them into a Secret manifest
-      * file: `database.env` (not committed, resolved locally)
-        ```
-        SPRING_DATASOURCE_USERNAME=workshop
-        SPRING_DATASOURCE_PASSWORD=change-me
-        ```
-      * `kustomization.yaml`
-        ```yaml
-        secretGenerator:
-          - name: database-credentials
-            envs:
-              - database.env # each entry becomes a key-value pair in the Secret
-        ```
-      * generates
-  
-        ```yaml
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: database-credentials-<content-hash>
-        type: Opaque
-        data:
-          SPRING_DATASOURCE_USERNAME: <base64-encoded-value>
-          SPRING_DATASOURCE_PASSWORD: <base64-encoded-value>
-        ```
-      * expose the generated Secret entries as container environment variables
-        ```yaml
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: spring-boot-k8s-gitops-flux-sops-workshop
-        spec:
-          template:
-            spec:
-              containers:
-                - name: application
-                  envFrom:
-                    - secretRef: # adds every Secret entry as an environment variable
-                        name: database-credentials
-        ```
-      * Spring Boot maps the environment variables to application properties
-        * `SPRING_DATASOURCE_USERNAME` becomes `spring.datasource.username`
-        * `SPRING_DATASOURCE_PASSWORD` becomes `spring.datasource.password`
-      * generation does not encrypt secret values
-        * Kubernetes stores these values as base64-encoded data
-        * do not commit the plaintext `database.env` file
-
 * patch targeting
   * a patch describes changes to one or more resources already loaded by the current build
     * referenced in `kustomization.yaml`
