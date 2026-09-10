@@ -33,19 +33,115 @@
      * in particular: kustomization-directory = directory path, not the path to the Kustomization file
      * recognized names: `kustomization.yaml`, `kustomization.yml`, or `Kustomization`
      * more than one recognized file in the same directory causes an error
-  3. Kustomize creates an in-memory resource set from the paths specified in `resources`
-     * example
+     * Kustomize creates an in-memory resource set from the paths specified in `resources`
+       * example
 
-       ```yaml
-       resources: # list of paths to manifest files or Kustomize directories
-         - deployment.yaml # relative path = resolved from the Kustomization directory
-       ```
+         ```yaml
+         resources: # list of paths to manifest files or Kustomize directories
+           - deployment.yaml # relative path = resolved from the Kustomization directory
+         ```
 
-     * the filename does not determine whether Kustomize uses the file as a resource
-       * specifying the file path in `resources` determines this role
-     * a manifest file contributes its Kubernetes objects to the current resource set
-     * a Kustomize directory contributes the resource set produced by its Kustomization file
-     * a YAML file that is not reachable through paths specified in `resources` is ignored
+       * the filename does not determine whether Kustomize uses the file as a resource
+         * specifying the file path in `resources` determines this role
+       * a manifest file contributes its Kubernetes objects to the current resource set
+       * a Kustomize directory contributes the resource set produced by its Kustomization file
+       * a YAML file that is not reachable through paths specified in `resources` is ignored
+  3. Kustomize runs generators and adds the generated objects to the resource set
+     * generator types
+       * `configMapGenerator`
+         * creates a Kubernetes `ConfigMap`
+         * stores non-sensitive configuration as readable data
+         * accepts files, literal values, or environment files
+       * `secretGenerator`
+         * creates a Kubernetes `Secret`
+         * stores sensitive values as base64-encoded data
+           * base64 encoding is not encryption
+         * accepts files, literal values, or environment files
+         * creates an `Opaque` Secret by default
+           * another Secret type can be specified
+       * `helmCharts`
+         * uses a Helm chart to generate Kubernetes objects
+         * requires the Helm command to be installed and available on `PATH`
+         * requires the `--enable-helm` option
+         * example: render a remote Helm chart with overridden values
+
+           ```yaml
+           # kustomization.yaml
+           helmCharts:
+             - name: minecraft
+               repo: https://itzg.github.io/minecraft-server-charts
+               version: 3.1.3
+               releaseName: moria
+               valuesInline:
+                 minecraftServer:
+                   eula: true
+                   difficulty: hard
+           ```
+
+           * Kustomize starts the Helm command
+           * Helm downloads chart version `3.1.3` from the specified repository
+           * Kustomize passes `releaseName` and `valuesInline` to `helm template`
+           * Helm returns the generated Kubernetes manifests to Kustomize
+             * Helm does not install them
+           * Kustomize adds each Kubernetes object declared in those manifests to the resource set
+             * example: a Deployment, Service, or ConfigMap
+       * `generators`
+         * runs custom generator plugins specified by file
+         * requires the `--enable-alpha-plugins` option
+         * example: decrypt a SOPS-encrypted Kubernetes Secret with the KSOPS plugin
+
+           ```yaml
+           # kustomization.yaml
+           generators:
+             - secret-generator.yaml
+           ```
+
+           ```yaml
+           # secret-generator.yaml
+           apiVersion: viaduct.ai/v1
+           kind: ksops
+           metadata:
+             name: secret-generator
+           files:
+             - database-secret.enc.yaml
+           ```
+
+           ```yaml
+           # database-secret.enc.yaml
+           apiVersion: v1
+           kind: Secret
+           metadata:
+             name: database
+           type: Opaque
+           stringData:
+             password: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
+           sops:
+             age:
+               - recipient: age1example...
+                 enc: |
+                   -----BEGIN AGE ENCRYPTED FILE-----
+                   ...
+                   -----END AGE ENCRYPTED FILE-----
+             # Additional SOPS metadata is omitted from this example.
+           ```
+
+           * `database-secret.enc.yaml` is a Kubernetes Secret manifest
+           * SOPS encrypts the value of `stringData.password`
+           * `sops.age[].recipient` identifies the public key used to encrypt the Secret
+           * the matching private key is stored outside the repository
+           * `SOPS_AGE_KEY_FILE` specifies the private-key file used during rendering
+             * example: `SOPS_AGE_KEY_FILE=/secure/keys/age-keys.txt`
+           * Kustomize runs the installed KSOPS plugin
+           * KSOPS uses the matching private key to decrypt the encrypted values
+           * KSOPS returns the Kubernetes Secret manifest with its decrypted values
+           * Kustomize adds that Kubernetes Secret to the resource set
+           * requires the KSOPS plugin and the `--enable-alpha-plugins` and `--enable-exec` options
+     * generated ConfigMaps and Secrets
+       * have a content hash added to their names
+         * source configuration uses the name without the hash
+         * Kustomize updates references to use the generated name
+         * changing the content changes the hash
+         * the changed reference updates the Pod template and triggers a rollout
   4. Kustomize applies configured patches and transformations to the resource set
      * example
   
@@ -206,24 +302,6 @@
         * `replicas`
           * matches a workload by `metadata.name`
           * sets its replica count
-* generators
-  * create new Kubernetes resources from files or values during rendering
-  * `configMapGenerator`
-    * creates a Kubernetes ConfigMap from files, literal values, or environment files during rendering
-    * adds a content hash to the generated ConfigMap name
-      * source files use the name without the hash
-      * Kustomize adds the hash to the generated ConfigMap name
-      * Kustomize adds the same name to references in the rendered resources
-      * changing the ConfigMap content changes the hash
-      * the new name changes the Pod template and triggers a rollout
-  * `secretGenerator`
-    * creates a Kubernetes Secret from files, literal values, or environment files during rendering
-    * adds a content hash to the generated Secret name
-      * source files use the name without the hash
-      * Kustomize adds the hash to the generated Secret name
-      * Kustomize adds the same name to references in the rendered resources
-      * changing the Secret content changes the hash
-      * the new name changes the Pod template and triggers a rollout
 * benefits
   * shared changes are made once in the base
   * overlays contain only environment-specific intent
