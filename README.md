@@ -483,33 +483,26 @@
   * Helm tracks each installed chart instance as a release and supports upgrades and rollbacks
 * choosing Helm or Kustomize
   * choose Helm when
-    * deployment behavior needs a stable configuration interface
+    * other teams need to deploy the application through documented values
       * example
         * the application team publishes the Inventory API chart
         * customer operations teams configure image registry, database endpoint, resources, and certificates through documented values
-        * consumers upgrade chart versions without editing or understanding the chart templates
-      * Kustomize could represent the same deployments, but consumers would customize Kubernetes resources and patches
-      * Helm is valuable here because the chart exposes a deliberate consumer-facing configuration contract
-    * CI or other repositories need a versioned deployment artifact
-      * example: production pins chart `0.8.1` while staging validates the deployment changes in `0.9.0`
-    * optional resources belong to the supported interface
+        * consumers upgrade chart versions without editing the chart templates
+      * with Kustomize, consumers would need to work directly with Kubernetes manifests and patches
+    * the chart controls which optional resources are installed
       * example: render `ServiceMonitor` only in clusters running Prometheus Operator
-    * dependencies belong to the installation
+    * dependent applications can be part of the installation
       * example: bundle Redis for development but use managed Redis in production
     * Helm release operations are required
       * example: inspect release history or roll back a failed upgrade
     * one team can still benefit from Helm when it needs packaging, dependencies, hooks, tests, release history, or rollback
   * choose Kustomize when
-    * environment changes are small and Kubernetes-specific
-      * example: image tag, replicas, memory, namespace, and readiness timing
-    * reviewers should see the exact Kubernetes fields being changed
-      * a patch shows the concrete Deployment structure without tracing `.Values` through templates
-    * a general consumer-facing configuration interface is not required
-    * templates, loops, and conditional resources would add unnecessary indirection
-    * the delivery system already owns reconciliation and configuration history
-      * example: Flux builds a Kustomize overlay from Git, applies it, and corrects drift
-      * Git records the desired-state history; reverting a commit restores the previous manifests for Flux to reconcile
-    * concrete YAML is preferred when direct Kubernetes schema-aware editing and review are more valuable than template reuse
+    * users are expected to work directly with Kubernetes manifests and fields
+    * deployment variants only change fields in existing Kubernetes objects
+      * example: image, replica count, namespace, or memory limit
+    * the application does not need to be distributed as a versioned chart
+    * another system manages deployment and reconciliation
+      * example: Flux
 * using Helm and Kustomize together
   * separate workloads
     * install a vendor database from a Helm chart
