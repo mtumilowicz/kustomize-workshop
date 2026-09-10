@@ -142,116 +142,164 @@
          * Kustomize updates references to use the generated name
          * changing the content changes the hash
          * the changed reference updates the Pod template and triggers a rollout
-  4. Kustomize applies configured patches and transformations to the resource set
-     * example
-  
-       ```yaml
-       patches: # identifies a patch file
-         - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
-       ```
-     * the filename does not determine whether Kustomize uses the file as a patch
-       * specifying the file path in `patches[].path` determines this role
-     * the patch modifies matching objects already in the resource set (already loaded by the current build)
-       * in particular: the patch file is not added as a separate object
-       * patch types
-         * strategic merge patch
-           * is written as a Kubernetes object with `apiVersion`, `kind`, `metadata`, and the fields to modify
-           * contains
-             * fields that identify the target object
-             * fields that identify nested list items
-               * example: `containers[].name` identifies the container to modify
+  4. Kustomize transforms the resource set
+     * built-in transformations
+       * example
+
+         ```yaml
+         # kustomization.yaml
+         namespace: example
+         images:
+           - name: example-app
+             newTag: 1.2.0
+         ```
+
+         * `namespace` changes the namespace of applicable objects
+         * `images` changes matching container image references
+       * a transformer is Kustomize processing logic, not a Kubernetes resource
+       * it changes applicable fields in the loaded resources without requiring a patch
+         * not always replaceable by patch
+           * example: `namespace: inventory-dev` changes both the loaded Deployment and Service
+             * using patches would require separate targets for the Deployment and Service
+       * types
+         * changes applied across resources
+           * apply the same change to every applicable loaded resource
+           * do not select an individual resource by name
+           * `namespace`
+             * assigns a namespace to every namespace-scoped resource
+             * leaves cluster-scoped resources unchanged
+           * `labels`
+             * adds labels to applicable resource metadata
+             * can also add them to Pod templates and selectors
+           * `commonAnnotations`
+             * adds the same annotations to applicable resource metadata
+             * vs labels
+               * labels identify and group resources
+                 * used by selectors and queries
+               * annotations attach non-identifying information
+                 * cannot be used by Kubernetes selectors
+                 * used by tools or humans as metadata
+         * changes applied to matching resources
+           * select a resource or field using a configured name
+           * leave non-matching resources unchanged
+           * `images`
+             * finds matching container image references across all loaded resources
+             * changes their registry, image name, tag, or digest
+             * leaves non-matching image references unchanged
+           * `replicas`
+             * matches a workload by `metadata.name`
+             * sets its replica count
+     * patches
+       * example
+
+         ```yaml
+         patches: # identifies a patch file
+           - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
+         ```
+
+       * the filename does not determine whether Kustomize uses the file as a patch
+         * specifying the file path in `patches[].path` determines this role
+       * the patch modifies matching objects already in the resource set (already loaded by the current build)
+         * in particular: the patch file is not added as a separate object
+         * patch types
+           * strategic merge patch
+             * is written as a Kubernetes object with `apiVersion`, `kind`, `metadata`, and the fields to modify
+             * contains
+               * fields that identify the target object
+               * fields that identify nested list items
+                 * example: `containers[].name` identifies the container to modify
+
+                   ```yaml
+                   containers:
+                     - name: inventory-api
+                       imagePullPolicy: Always # Kustomize changes imagePullPolicy.
+                   ```
+
+               * fields to add, change, or delete
+                 * example: add `team=platform` to `metadata.labels` of the target object
+
+                   ```yaml
+                   metadata:
+                     labels:
+                       team: platform
+                   ```
+
+             * unchanged fields can be omitted
+             * targeting by resource identity
+               * when `target` is omitted, Kustomize compares `apiVersion`, `kind`, and `metadata.name`
+               * Kustomize applies the patch to the object with matching identity
+               * example
 
                  ```yaml
-                 containers:
-                   - name: inventory-api
-                     imagePullPolicy: Always # Kustomize changes imagePullPolicy.
+                 # kustomization.yaml
+                 patches:
+                   - path: replicas-patch.yaml
                  ```
 
-             * fields to add, change, or delete
-               * example: add `team=platform` to `metadata.labels` of the target object
-
                  ```yaml
+                 # replicas-patch.yaml
+                 apiVersion: apps/v1
+                 kind: Deployment
                  metadata:
-                   labels:
-                     team: platform
+                   name: inventory-api
+                 spec:
+                   replicas: 3
                  ```
 
-           * unchanged fields can be omitted
-           * targeting by resource identity
-             * when `target` is omitted, Kustomize compares `apiVersion`, `kind`, and `metadata.name`
-             * Kustomize applies the patch to the object with matching identity
+             * targeting with `target`
+               * a strategic merge patch can include `target`
+                 * when `target` is present
+                   * only fields specified in `target` select the objects
+                   * `metadata.name` in the patch is required but does not participate in selection
+                   * `apiVersion` and `kind` still define how Kustomize interprets the patch
+               * `target` can contain `group`, `version`, `kind`, `name`, `namespace`, `labelSelector`, and `annotationSelector`
+               * every field specified in `target` must match
+               * use case: apply the same change to a group of objects
+                 * example: add `team=platform` to every Deployment labeled `env=dev`
+
+                   ```yaml
+                   # kustomization.yaml
+                   patches:
+                     - path: team-patch.yaml
+                       target:
+                         kind: Deployment
+                         labelSelector: env=dev
+                   ```
+
+                   ```yaml
+                   # team-patch.yaml
+                   apiVersion: apps/v1
+                   kind: Deployment
+                   metadata:
+                     name: required-placeholder
+                     labels:
+                       team: platform
+                   ```
+
+           * JSON Patch
+             * describes field changes as operations
+               * supported operations include `add`, `remove`, and `replace`
+             * contains no Kubernetes resource identity
+             * requires `target` in the Kustomization
              * example
 
                ```yaml
                # kustomization.yaml
                patches:
                  - path: replicas-patch.yaml
+                   target:
+                     group: apps
+                     version: v1
+                     kind: Deployment
+                     name: inventory-api
                ```
 
                ```yaml
                # replicas-patch.yaml
-               apiVersion: apps/v1
-               kind: Deployment
-               metadata:
-                 name: inventory-api
-               spec:
-                 replicas: 3
+               - op: replace
+                 path: /spec/replicas
+                 value: 3
                ```
-
-           * targeting with `target`
-             * a strategic merge patch can include `target`
-                * when `target` is present
-                  * only fields specified in `target` select the objects
-                  * `metadata.name` in the patch is required but does not participate in selection
-                  * `apiVersion` and `kind` still define how Kustomize interprets the patch
-             * `target` can contain `group`, `version`, `kind`, `name`, `namespace`, `labelSelector`, and `annotationSelector`
-             * every field specified in `target` must match
-             * use case: apply the same change to a group of objects
-               * example: add `team=platform` to every Deployment labeled `env=dev`
-
-                 ```yaml
-                 # kustomization.yaml
-                 patches:
-                   - path: team-patch.yaml
-                     target:
-                       kind: Deployment
-                       labelSelector: env=dev
-                 ```
-
-                 ```yaml
-                 # team-patch.yaml
-                 apiVersion: apps/v1
-                 kind: Deployment
-                 metadata:
-                   name: required-placeholder
-                   labels:
-                     team: platform
-                 ```
-
-         * JSON Patch
-           * describes field changes as operations
-             * supported operations include `add`, `remove`, and `replace`
-           * contains no Kubernetes resource identity
-           * requires `target` in the Kustomization
-           * example
-
-             ```yaml
-             # kustomization.yaml
-             patches:
-               - path: replicas-patch.yaml
-                 target:
-                   group: apps
-                   version: v1
-                   kind: Deployment
-                   name: inventory-api
-             ```
-
-             ```yaml
-             # replicas-patch.yaml
-             - op: replace
-               path: /spec/replicas
-               value: 3
-             ```
   5. Kustomize prints the complete resource set as Kubernetes manifests to standard output
      * inspect the output, redirect it to a file, or pass it to another command
   * notes
@@ -268,40 +316,6 @@
   2. `kubectl` renders the Kustomization
   3. `kubectl` sends the rendered objects to the Kubernetes API
   4. the Kubernetes API creates new objects and updates existing objects
-* transformations
-  * a transformer is Kustomize processing logic, not a Kubernetes resource
-  * it changes applicable fields in the loaded resources without requiring a patch
-    * not always replaceable by patch
-        * example: `namespace: inventory-dev` changes both the loaded Deployment and Service
-            * using patches would require separate targets for the Deployment and Service
-  * types
-      * changes applied across resources
-        * apply the same change to every applicable loaded resource
-        * do not select an individual resource by name
-        * `namespace`
-          * assigns a namespace to every namespace-scoped resource
-          * leaves cluster-scoped resources unchanged
-        * `labels`
-          * adds labels to applicable resource metadata
-          * can also add them to Pod templates and selectors
-        * `commonAnnotations`
-          * vs labels
-            * labels identify and group resources
-                * used by selectors and queries.
-            * annotations attach non-identifying information
-                * cannot be used by Kubernetes selectors
-                * used by tools or humans as metadata
-          * adds the same annotations to applicable resource metadata
-      * changes applied to matching resources
-        * select a resource or field using a configured name
-        * leave non-matching resources unchanged
-        * `images`
-          * finds matching container image references across all loaded resources
-          * changes their registry, image name, tag, or digest
-          * leaves non-matching image references unchanged
-        * `replicas`
-          * matches a workload by `metadata.name`
-          * sets its replica count
 * benefits
   * shared changes are made once in the base
   * overlays contain only environment-specific intent
