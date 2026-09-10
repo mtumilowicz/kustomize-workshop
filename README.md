@@ -176,21 +176,21 @@
                * example
     
                  ```yaml
-                 # deployment.yaml (partial)
+                 # deployment.yaml (partial snippet)
                  containers:
                    - name: api
                      image: example-app:1.0
                  ```
     
                  ```yaml
-                 # overlays/dev/kustomization.yaml (partial)
+                 # overlays/dev/kustomization.yaml (partial snippet)
                  images:
                    - name: example-app
                      newTag: 1.1-rc
                  ```
     
                  ```yaml
-                 # overlays/prod/kustomization.yaml (partial)
+                 # overlays/prod/kustomization.yaml (partial snippet)
                  images:
                    - name: example-app
                      newTag: 1.1
@@ -206,7 +206,7 @@
                * example
     
                  ```yaml
-                 # deployment.yaml (partial)
+                 # deployment.yaml (partial snippet)
                  metadata:
                    name: api-deployment
                  spec:
@@ -214,14 +214,14 @@
                  ```
     
                  ```yaml
-                 # overlays/dev/kustomization.yaml (partial)
+                 # overlays/dev/kustomization.yaml (partial snippet)
                  replicas:
                    - name: api-deployment
                      count: 1
                  ```
     
                  ```yaml
-                 # overlays/prod/kustomization.yaml (partial)
+                 # overlays/prod/kustomization.yaml (partial snippet)
                  replicas:
                    - name: api-deployment
                      count: 3
@@ -232,18 +232,18 @@
          * `replacements`
            * reads a field from one object in loaded resources
            * copies the value to selected fields in other loaded resources
-           * use case: copy a renamed Service name into a container environment variable
-               * example
-    
+           * use case: copy a transformed resource name into a field that Kustomize does not recognize as a name reference
+             * example: copy the renamed Service name into a container environment variable
+
                  ```yaml
-                 # service.yaml (partial)
+                 # service.yaml (partial snippet)
                  kind: Service
                  metadata:
                    name: backend
                  ```
     
                  ```yaml
-                 # deployment.yaml (partial)
+                 # deployment.yaml (partial snippet)
                  kind: Deployment
                  metadata:
                    name: api-deployment
@@ -258,7 +258,7 @@
                  ```
     
                  ```yaml
-                 # kustomization.yaml (partial)
+                 # kustomization.yaml (partial snippet)
                  namePrefix: dev-
                  replacements:
                    - source:
