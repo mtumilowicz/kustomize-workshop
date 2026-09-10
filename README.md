@@ -523,36 +523,43 @@
 
     * this keeps organization policy outside unrelated vendor chart templates and avoids maintaining chart forks
     * every install and upgrade must use the same post-renderer so Helm operates on repeatable rendered output
-* project structure
-  * base and overlay are project conventions, not Kustomize object types
+## Project structure
 
-    ```text
-    manifests/
-    ├── base/
-    │   ├── deployment.yaml
-    │   ├── service.yaml
-    │   └── kustomization.yaml
-    └── overlays/
-        ├── dev/
-        ├── staging/
-        └── prod/
-    ```
+* example
 
-  * `base/kustomization.yaml` lists the shared resource manifests
+  ```text
+  manifests/ // `base` and `overlay` are project conventions, not Kustomize object types
+  ├── base/
+  │   ├── deployment.yaml
+  │   ├── service.yaml
+  │   └── kustomization.yaml
+  └── overlays/
+      ├── dev/
+      │   └── kustomization.yaml
+      ├── staging/
+      │   └── kustomization.yaml
+      └── prod/
+          └── kustomization.yaml
+  ```
 
-    ```yaml
-    # manifests/base/kustomization.yaml
-    resources:
-      - deployment.yaml
-      - service.yaml
-    ```
+* the base Kustomization loads the Deployment and Service manifests
 
-  * each directory under `overlays` loads `base` and adds environment-specific configuration
-  * the development overlay sets `namespace` because this workshop deploys development resources to `inventory-dev`
+  ```yaml
+  # manifests/base/kustomization.yaml
+  resources:
+    - deployment.yaml
+    - service.yaml
+  ```
+
+* each overlay loads the base and specifies changes for one environment
+  * example: the development overlay sets the namespace and replica count
 
     ```yaml
     # manifests/overlays/dev/kustomization.yaml
-    namespace: inventory-dev
     resources:
       - ../../base
+    namespace: inventory-dev
+    replicas:
+      - name: inventory-api
+        count: 1
     ```
