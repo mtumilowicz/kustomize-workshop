@@ -37,6 +37,7 @@
        * example
 
          ```yaml
+         # kustomization.yaml (partial snippet)
          resources: # list of paths to manifest files or Kustomize directories
            - deployment.yaml # relative path = resolved from the Kustomization directory
          ```
@@ -66,7 +67,7 @@
          * example: render a remote Helm chart with overridden values
 
            ```yaml
-           # kustomization.yaml
+           # kustomization.yaml (partial snippet)
            helmCharts:
              - name: minecraft
                repo: https://itzg.github.io/minecraft-server-charts
@@ -91,7 +92,7 @@
          * example: decrypt a SOPS-encrypted Kubernetes Secret with the KSOPS plugin
 
            ```yaml
-           # kustomization.yaml
+           # kustomization.yaml (partial snippet)
            generators:
              - secret-generator.yaml
            ```
@@ -107,7 +108,7 @@
            ```
 
            ```yaml
-           # database-secret.enc.yaml
+           # database-secret.enc.yaml (partial snippet)
            apiVersion: v1
            kind: Secret
            metadata:
@@ -153,10 +154,41 @@
            * leaves cluster-scoped objects unchanged
          * `namePrefix`
            * adds a prefix to the name of every object in loaded resources
-           * updates references between loaded resources
+           * updates recognized fields that reference those object names
+           * example
+
+             ```yaml
+             # resources (partial snippet)
+             apiVersion: v1
+             kind: ServiceAccount
+             metadata:
+               name: application
+             ---
+             apiVersion: apps/v1
+             kind: Deployment
+             spec:
+               template:
+                 spec:
+                   serviceAccountName: application
+             ```
+
+             ```yaml
+             # kustomization.yaml (partial snippet)
+             namePrefix: dev-
+             ```
+
+             * the ServiceAccount name becomes `dev-application`
+             * `serviceAccountName` also becomes `dev-application`
+           * other recognized references include
+             * `configMapRef.name`
+             * `secretRef.name`
+             * `volumes[].configMap.name`
+             * `volumes[].secret.secretName`
+           * Kustomize does not update fields that it does not recognize as name-reference fields
+             * use `replacements` to copy the transformed object name into those fields
          * `nameSuffix`
            * adds a suffix to the name of every object in loaded resources
-           * updates references between loaded resources
+           * updates recognized fields that reference those object names
          * `labels`
            * adds labels to `metadata.labels` of every object in loaded resources
            * can also add labels to Pod templates and selectors
@@ -279,6 +311,7 @@
        * example
 
          ```yaml
+         # kustomization.yaml (partial snippet)
          patches: # identifies a patch file
            - path: deployment-patch.yaml # relative path = resolved from the Kustomization directory
          ```
@@ -296,6 +329,7 @@
                  * example: `containers[].name` identifies the container to modify
 
                    ```yaml
+                   # deployment-patch.yaml (partial snippet)
                    containers:
                      - name: inventory-api
                        imagePullPolicy: Always # Kustomize changes imagePullPolicy.
@@ -305,6 +339,7 @@
                  * example: add `team=platform` to `metadata.labels` of the target object
 
                    ```yaml
+                   # deployment-patch.yaml (partial snippet)
                    metadata:
                      labels:
                        team: platform
@@ -317,7 +352,7 @@
                * example
 
                  ```yaml
-                 # kustomization.yaml
+                 # kustomization.yaml (partial snippet)
                  patches:
                    - path: replicas-patch.yaml
                  ```
@@ -344,7 +379,7 @@
                  * example: add `team=platform` to every Deployment labeled `env=dev`
 
                    ```yaml
-                   # kustomization.yaml
+                   # kustomization.yaml (partial snippet)
                    patches:
                      - path: team-patch.yaml
                        target:
@@ -370,7 +405,7 @@
              * example
 
                ```yaml
-               # kustomization.yaml
+               # kustomization.yaml (partial snippet)
                patches:
                  - path: replicas-patch.yaml
                    target:
@@ -427,6 +462,7 @@
     * repeat this block in three Deployment files
 
       ```yaml
+      # base/deployment.yaml (partial snippet)
       readinessProbe:
         httpGet:
           path: /ready
@@ -505,7 +541,7 @@
     * the Deployment template reads the supported replica and image values
 
       ```yaml
-      # deploy/chart/inventory-api/templates/deployment.yaml
+      # deploy/chart/inventory-api/templates/deployment.yaml (partial snippet)
       spec:
         replicas: {{ .Values.replicaCount }}
         template:
@@ -518,6 +554,7 @@
     * `values.yaml` documents every supported property and supplies defaults
 
       ```yaml
+      # deploy/chart/inventory-api/values.yaml (partial snippet)
       # replicaCount controls the number of Inventory API Pods.
       replicaCount: 1
 
@@ -534,6 +571,7 @@
     * environment files supply only the supported differences
 
       ```yaml
+      # deploy/environments/prod.yaml (partial snippet)
       image:
         repository: registry.example.com/inventory-api
         tag: 1.4.0
@@ -550,7 +588,7 @@
     * `appVersion` describes the application version represented by the chart and is independent of the chart version
 
       ```yaml
-      # Chart.yaml
+      # Chart.yaml (partial snippet)
       name: inventory-api
       version: 0.8.1
       appVersion: "1.4.0"
@@ -577,14 +615,14 @@
     * the chart can render it only for clusters where Prometheus Operator is installed
 
       ```yaml
-      # deploy/environments/prod.yaml
+      # deploy/environments/prod.yaml (partial snippet)
       monitoring:
         serviceMonitor:
           enabled: true
       ```
 
       ```yaml
-      # templates/service-monitor.yaml
+      # templates/service-monitor.yaml (partial snippet)
       {{- if .Values.monitoring.serviceMonitor.enabled }}
       apiVersion: monitoring.coreos.com/v1
       kind: ServiceMonitor
@@ -598,7 +636,7 @@
     * the Inventory API chart can declare a Redis chart as its dependency
 
       ```yaml
-      # Chart.yaml
+      # Chart.yaml (partial snippet)
       dependencies:
         - name: redis
           version: 20.x.x
@@ -609,7 +647,7 @@
     * development enables the Redis subchart to install a self-contained Redis instance with the application
 
       ```yaml
-      # deploy/environments/dev.yaml
+      # deploy/environments/dev.yaml (partial snippet)
       redis:
         enabled: true
       ```
@@ -617,7 +655,7 @@
     * production disables the bundled Redis dependency and points the Inventory API at a separately managed Redis service
 
       ```yaml
-      # deploy/environments/prod.yaml
+      # deploy/environments/prod.yaml (partial snippet)
       redis:
         enabled: false
 
@@ -643,6 +681,7 @@
     * excessive configurability can turn `values.yaml` into a large deployment API
 
       ```yaml
+      # values.yaml (partial snippet)
       deployment:
         strategy: {}
         annotations: {}
@@ -703,6 +742,7 @@
     * one centrally maintained Kustomize post-renderer adds the label consistently to the rendered resources
 
       ```yaml
+      # rendered resource (partial snippet)
       metadata:
         labels:
           company.example/cost-center: inventory
