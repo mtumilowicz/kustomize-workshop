@@ -144,51 +144,137 @@
          * the changed reference updates the Pod template and triggers a rollout
   4. Kustomize transforms the resource set
      * built-in transformations
-       * example
-
-         ```yaml
-         # kustomization.yaml
-         namespace: example
-         images:
-           - name: example-app
-             newTag: 1.2.0
-         ```
-
-         * `namespace` changes the namespace of applicable objects
-         * `images` changes matching container image references
        * a transformer is Kustomize processing logic, not a Kubernetes resource
-       * it changes applicable fields in the loaded resources without requiring a patch
-         * not always replaceable by patch
-           * example: `namespace: inventory-dev` changes both the loaded Deployment and Service
-             * using patches would require separate targets for the Deployment and Service
-       * types
-         * changes applied across resources
-           * apply the same change to every applicable loaded resource
-           * do not select an individual resource by name
-           * `namespace`
-             * assigns a namespace to every namespace-scoped resource
-             * leaves cluster-scoped resources unchanged
-           * `labels`
-             * adds labels to applicable resource metadata
-             * can also add them to Pod templates and selectors
-           * `commonAnnotations`
-             * adds the same annotations to applicable resource metadata
-             * vs labels
-               * labels identify and group resources
-                 * used by selectors and queries
-               * annotations attach non-identifying information
-                 * cannot be used by Kubernetes selectors
-                 * used by tools or humans as metadata
-         * changes applied to matching resources
-           * select a resource or field using a configured name
-           * leave non-matching resources unchanged
-           * `images`
-             * finds matching container image references across all loaded resources
-             * changes their registry, image name, tag, or digest
-             * leaves non-matching image references unchanged
-           * `replicas`
-             * matches a workload by `metadata.name`
-             * sets its replica count
+       * transformations are configured in `kustomization.yaml`
+       * changes applied across loaded resources
+         * `namespace`
+           * sets `metadata.namespace` on every namespace-scoped object in loaded resources
+           * example: `namespace: inventory-dev` produces `metadata.namespace: inventory-dev`
+           * leaves cluster-scoped objects unchanged
+         * `namePrefix`
+           * adds a prefix to the name of every object in loaded resources
+           * updates references between loaded resources
+         * `nameSuffix`
+           * adds a suffix to the name of every object in loaded resources
+           * updates references between loaded resources
+         * `labels`
+           * adds labels to `metadata.labels` of every object in loaded resources
+           * can also add labels to Pod templates and selectors
+         * `commonAnnotations`
+           * adds annotations to `metadata.annotations` of every object in loaded resources
+           * labels and annotations are both Kubernetes metadata
+             * labels identify or group objects
+             * Kubernetes selectors can use labels
+             * annotations store descriptive or tool-specific information
+             * Kubernetes selectors cannot use annotations
+       * changes applied to matching values or objects in loaded resources
+         * `images`
+           * finds matching container image references in loaded resources
+           * `name` matches the image name in `containers[].image`
+           * changes the registry, image name, tag, or digest
+           * use case: use a different image version in each environment
+               * example
+    
+                 ```yaml
+                 # deployment.yaml (partial)
+                 containers:
+                   - name: api
+                     image: example-app:1.0
+                 ```
+    
+                 ```yaml
+                 # overlays/dev/kustomization.yaml (partial)
+                 images:
+                   - name: example-app
+                     newTag: 1.1-rc
+                 ```
+    
+                 ```yaml
+                 # overlays/prod/kustomization.yaml (partial)
+                 images:
+                   - name: example-app
+                     newTag: 1.1
+                 ```
+    
+                 * the development image becomes `example-app:1.1-rc`
+                 * the production image becomes `example-app:1.1`
+         * `replicas`
+           * finds workloads with matching `metadata.name` in loaded resources
+           * sets `spec.replicas`
+           * supports Deployments, StatefulSets, ReplicaSets, and ReplicationControllers
+           * use case: use a different replica count in each environment
+               * example
+    
+                 ```yaml
+                 # deployment.yaml (partial)
+                 metadata:
+                   name: api-deployment
+                 spec:
+                   replicas: 2
+                 ```
+    
+                 ```yaml
+                 # overlays/dev/kustomization.yaml (partial)
+                 replicas:
+                   - name: api-deployment
+                     count: 1
+                 ```
+    
+                 ```yaml
+                 # overlays/prod/kustomization.yaml (partial)
+                 replicas:
+                   - name: api-deployment
+                     count: 3
+                 ```
+    
+                 * the development Deployment has `spec.replicas: 1`
+                 * the production Deployment has `spec.replicas: 3`
+         * `replacements`
+           * reads a field from one object in loaded resources
+           * copies the value to selected fields in other loaded resources
+           * use case: copy a renamed Service name into a container environment variable
+               * example
+    
+                 ```yaml
+                 # service.yaml (partial)
+                 kind: Service
+                 metadata:
+                   name: backend
+                 ```
+    
+                 ```yaml
+                 # deployment.yaml (partial)
+                 kind: Deployment
+                 metadata:
+                   name: api-deployment
+                 spec:
+                   template:
+                     spec:
+                       containers:
+                         - name: api
+                           env:
+                             - name: BACKEND_SERVICE
+                               value: backend
+                 ```
+    
+                 ```yaml
+                 # kustomization.yaml (partial)
+                 namePrefix: dev-
+                 replacements:
+                   - source:
+                       kind: Service
+                       name: backend
+                       fieldPath: metadata.name
+                     targets:
+                       - select:
+                           kind: Deployment
+                           name: api-deployment
+                         fieldPaths:
+                           - spec.template.spec.containers.[name=api].env.[name=BACKEND_SERVICE].value
+                 ```
+    
+                 * `namePrefix` changes the Service name from `backend` to `dev-backend`
+                 * `replacements` copies `dev-backend` to the `BACKEND_SERVICE` value
      * patches
        * example
 
