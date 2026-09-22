@@ -175,6 +175,19 @@
            * sets `metadata.namespace` on every namespace-scoped object in loaded resources
            * example: `namespace: inventory-dev` produces `metadata.namespace: inventory-dev`
            * leaves cluster-scoped objects unchanged
+           * practice
+             * omit `metadata.namespace` from reusable base manifests
+             * set `namespace` in each overlay
+
+               ```yaml
+               # overlays/dev/kustomization.yaml
+               namespace: app-dev
+               resources:
+                 - ../../base
+               ```
+
+             * another overlay can load the same base and set a different namespace
+             * `metadata.namespace` can also be changed with a patch, but the `namespace` transformer is simpler and standard
          * `namePrefix`
            * adds a prefix to the name of every object in loaded resources
            * updates recognized fields that reference those object names
